@@ -7,7 +7,13 @@ export type Member = { id: string; name: string; phone: string; flow: Flow; grou
 export type Schedule = { days: number[]; slots: { label: string; start: string; end: string }[] }
 export type Message = { id: string; flow: Flow; name: string; phone: string; text: string; direction: 'in' | 'out'; at: string; requestId?: string }
 export type Knowledge = { id: string; question: string; answer: string }
-export type Data = { requests: Request[]; members: Member[]; schedules: Record<Flow, Schedule>; rates: Record<string, number>; messages: Message[]; knowledge: Knowledge[] }
+export type IntakeLine = MaterialLine & { packs?: number }
+export type IntakeRecord = {
+  id: string; memberId: string; memberName: string; providerName: string;
+  ticketNumber: string; date: string; notes: string; lines: IntakeLine[];
+  created: string;
+}
+export type Data = { intakeRecords: IntakeRecord[]; requests: Request[]; members: Member[]; schedules: Record<Flow, Schedule>; rates: Record<string, number>; messages: Message[]; knowledge: Knowledge[] }
 export const flows: Record<Flow, string> = { organico: 'Huerta · Orgánicos', reciclable: 'Reciclaje · Aprovechables' }
 export const statuses: Record<Status, string> = { pendiente: 'Recibida', autorizada: 'Autorizada', programada: 'Programada', completada: 'Recolectada', rechazada: 'Rechazada' }
 export const materials: Record<Flow, string[]> = { organico: ['Cáscaras de frutas y verduras', 'Restos de alimentos', 'Poda y hojas', 'Borra de café', 'Otros orgánicos'], reciclable: ['Cartón', 'Papel', 'Plástico', 'Vidrio', 'Metal', 'Otros aprovechables'] }

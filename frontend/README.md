@@ -18,7 +18,7 @@ Abrir la URL que muestre Vite (normalmente `http://localhost:5173`). Para compro
 ## Perfiles de demostración
 
 - Coordinador de Huerta: orgánicos, autorización, recolección/entrega directa, donaciones, equipo, mensajes, pesaje, horarios e historial.
-- Coordinador de Reciclaje: aprovechables, autorización, asignación, pesaje por material, valor para el reciclador, equipo, mensajes y horarios.
+- Coordinador de Reciclaje: aprovechables, autorización, asignación, pesaje por material, valor para el reciclador, equipo, mensajes, horarios y registro de recepción física de materiales.
 - Administrador: resumen general, filtros, exportación CSV, equipo, horarios, tarifas, base de conocimiento y mensajes.
 
 El selector de perfil es una demostración, NO un inicio de sesión seguro. Los usuarios externos no tienen panel. Los grupos del equipo son etiquetas de organización; la separación real por coordinador/grupo queda para Supabase.
@@ -31,6 +31,8 @@ El selector de perfil es una demostración, NO un inicio de sesión seguro. Los 
 4. En una solicitud programada, elige **Registrar cierre** y registra el peso realmente aceptado por material o unidades de donación. Anota lo rechazado. Finaliza. El cálculo de reciclaje se acredita como valor para el reciclador, no para el habitante.
 5. Consulta historial, mensajes y reportes. Puedes simular entradas a partir de un formulario (no procesa mensajes reales ni clasifica por IA).
 6. En Configuración cambia los días y franjas, y las tarifas de reciclaje. Cada registro final conserva su tarifa aplicada. Los horarios de ejemplo no representan acuerdos definitivos.
+
+En Reciclaje, abre **Registros de materiales** para registrar una recepción independiente. Selecciona un reciclador, registra el peso por material y añade pacas, proveedor o tiquete si corresponde. El historial conserva el peso y las tarifas aplicadas al guardar.
 
 Las modificaciones se guardan en localStorage del navegador. Para reiniciar la demo elimina la clave `ecoconecta-v2-demo` en las herramientas del navegador (Application > Local Storage). No uses datos personales reales en esta versión. Todas las personas, teléfonos y solicitudes iniciales son datos de demostración. Las fotos adjuntas son locales y están limitadas a 1 MB; localStorage tiene una cuota limitada.
 
