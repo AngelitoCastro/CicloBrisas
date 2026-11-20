@@ -67,6 +67,20 @@ Todas las ramas parten del mismo commit de `main` con esta distribución. Cada p
 
 **Área propuesta:** módulos de WhatsApp e IA dentro de `backend/`. Coordinar con el responsable del backend; los modelos, permisos, estados y puntos tienen una única implementación compartida.
 
+## Skills disponibles por frente
+
+Las instrucciones compartidas están en [AGENTS.md](AGENTS.md); los archivos de cada skill se versionan en `.agents/skills/` y llegan con el repositorio. Codex puede descubrirlas en esa ubicación al iniciar una sesión con la versión actualizada. También se pueden invocar explícitamente:
+
+| Responsable | Skill principal | Uso de ejemplo |
+| --- | --- | --- |
+| Tú | `ecoconecta-backend` | `$ecoconecta-backend implementa el endpoint de programación respetando RN-02 y RN-03` |
+| Compañero 1 | `ecoconecta-ui` | `$ecoconecta-ui construye el formulario móvil de solicitud` |
+| Compañero 2 | `ecoconecta-ui` | `$ecoconecta-ui construye las tarjetas del coordinador de Recicladores` |
+| Compañero 3 | `ecoconecta-whatsapp-ia` | `$ecoconecta-whatsapp-ia implementa la recepción y validación del webhook` |
+| Todo el equipo | `ecoconecta-integracion` | `$ecoconecta-integracion verifica el escenario de demostración del MVP` |
+
+Después de guardar sus cambios locales, actualizar la rama propia con `git pull --ff-only` y abrir una nueva sesión de Codex en el repositorio para que descubra las skills. En un agente sin descubrimiento compatible, pedirle que lea `AGENTS.md` y el `SKILL.md` correspondiente. Las skills guían el trabajo; no instalan la aplicación ni configuran credenciales externas.
+
 ## Acuerdos iniciales — 30 minutos juntos
 
 - [ ] Definir rutas y campos de los endpoints de solicitud, programación, cierre y consulta de puntos.

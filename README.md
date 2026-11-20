@@ -9,6 +9,7 @@ Documentación del MVP comunitario para coordinar la recolección de residuos or
 | Documento | Contenido y uso |
 | --- | --- |
 | [Tareas y ramas del equipo](TAREAS_EQUIPO.md) | Responsables, pendientes por frente, criterios de entrega y pasos para trabajar en cada rama. |
+| [Configuración de skills para agentes](AGENTS.md) | Skills compartidas de backend, interfaz, WhatsApp/IA e integración, disponibles dentro del repositorio. |
 | [Presentación y alcance del MVP](readme_oficial_ecoconecta_villas_de_san_pablo.md) | Propósito, actores, arquitectura, stack propuesto, reglas RN-01 a RN-08 y escenario de demostración. Leer primero. |
 | [Plan de desarrollo, reglas y base de datos](plan_de_desarrollo_reglas_y_base_de_datos.md) | Cronograma por frentes, esquema SQL propuesto y lista de verificación de reglas operativas. |
 | [Guía de interfaz e identidad visual](gu_a_de_implementaci_n_ui_e_identidad_visual.md) | Colores, tipografías, accesibilidad y especificaciones de las tres vistas principales. |
