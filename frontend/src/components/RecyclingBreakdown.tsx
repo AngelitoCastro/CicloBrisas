@@ -62,7 +62,7 @@ export default function RecyclingBreakdown({ request, rates, onSave }: Props) {
         ))}
         <p className="muted" role="status">
             {complete ? 'Valor estimado para el reciclador: ' + money(value) :
-                validWeights && knownMaterials && !configuredRates ? 'Revisa las tarifas de los materiales en Configuración.' :
+                validWeights && knownMaterials && !configuredRates ? 'Pide a Administración que revise las tarifas de los materiales.' :
                 validWeights && knownMaterials && totalHundredths > acceptedHundredths ? 'El desglose supera el peso aceptado.' :
                 'Registra pesos positivos con hasta dos decimales. La suma debe ser igual al peso aceptado.'}
         </p>

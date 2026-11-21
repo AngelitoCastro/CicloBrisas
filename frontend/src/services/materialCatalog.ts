@@ -1,5 +1,5 @@
 // Materiales del tiquete de pesaje. rateKey conecta cada grupo con las
-// tarifas que ya existen en Configuración, sin agregar tarifas multiusuario.
+// tarifas por material administradas en Reglas de EcoPuntos.
 export const intakeCatalog = [
   { id: 'papel', name: 'Cartón y papel', icon: 'paper', items: [
     { name: 'Plegadiza', rateKey: 'Cartón' },
