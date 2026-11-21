@@ -158,6 +158,38 @@ class PilotoUpdate(BaseModel):
     )
 
 
+class ConsentimientoWhatsAppUpdate(BaseModel):
+    aceptado: bool = Field(
+        description="Consentimiento explícito y vigente para recibir avisos por WhatsApp.",
+        examples=[True],
+    )
+    origen: str = Field(
+        default="ADMIN",
+        min_length=2,
+        max_length=40,
+        examples=["ADMIN"],
+    )
+
+    @field_validator("origen")
+    @classmethod
+    def _limpiar_origen(cls, valor: str) -> str:
+        limpio = valor.strip()
+        if len(limpio) < 2:
+            raise ValueError("El origen del consentimiento es inválido.")
+        return limpio
+
+
+class ConsentimientoWhatsAppResponse(ModeloSalida):
+    usuario_id: UUID
+    aceptado: bool
+    origen: str
+    actualizado_en: datetime
+
+    @field_serializer("actualizado_en")
+    def _fecha(self, valor: datetime) -> str | None:
+        return _serializar_fecha_hora(valor)
+
+
 # ---------------------------------------------------------------------------
 # Solicitudes
 # ---------------------------------------------------------------------------
@@ -232,6 +264,48 @@ class ProgramarSolicitud(BaseModel):
     fecha_programada: date = Field(examples=["2026-11-21"])
     hora_programada: time = Field(examples=["09:30"])
     nota_operativa: str | None = Field(default=None, max_length=500)
+    subtipo_material: str | None = Field(
+        default=None,
+        max_length=100,
+        examples=["Cáscaras y restos de vegetales"],
+    )
+    cantidad_estimada_kg: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=100_000,
+        max_digits=8,
+        decimal_places=2,
+        examples=[12.5],
+    )
+    disponibilidad_usuario: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=120,
+        examples=["Portería conjunto 2, mañana en la mañana"],
+    )
+    observaciones: str | None = Field(
+        default=None,
+        max_length=2000,
+        examples=["Llevar baldes extra."],
+    )
+
+    @field_validator("nota_operativa", "subtipo_material", "observaciones")
+    @classmethod
+    def _limpiar_opcionales_programacion(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        limpio = valor.strip()
+        return limpio or None
+
+    @field_validator("disponibilidad_usuario")
+    @classmethod
+    def _limpiar_disponibilidad_programacion(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        limpio = valor.strip()
+        if len(limpio) < 3:
+            raise ValueError("Indica una referencia o disponibilidad válida.")
+        return limpio
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -240,6 +314,10 @@ class ProgramarSolicitud(BaseModel):
                 "fecha_programada": "2026-11-21",
                 "hora_programada": "09:30",
                 "nota_operativa": "Ruta de la mañana",
+                "subtipo_material": "Cáscaras y restos de vegetales",
+                "cantidad_estimada_kg": 12.5,
+                "disponibilidad_usuario": "Portería conjunto 2",
+                "observaciones": "Llevar baldes extra.",
             }
         }
     )
@@ -302,6 +380,7 @@ class SolicitudPublicaResponse(ModeloSalida):
     hora_programada: time | None
     puntos_otorgados: DecimalSalida
     regla_puntos_id: int | None
+    origen_canal: Literal["PORTAL", "WHATSAPP"] = "PORTAL"
     creado_en: datetime
     actualizado_en: datetime
 
@@ -461,6 +540,8 @@ __all__ = [
     "CategoriaContenido",
     "CerrarSolicitud",
     "CierreSolicitudResponse",
+    "ConsentimientoWhatsAppResponse",
+    "ConsentimientoWhatsAppUpdate",
     "ContactoSolicitante",
     "ContenidoEducativoResponse",
     "DemoLoginRequest",

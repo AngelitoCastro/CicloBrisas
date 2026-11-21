@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { CalendarDays, Clock, CheckCircle2, MapPin, Plus, MessageCircle, Scale, ShieldCheck, Check, Sun, Sunrise, Sunset, ClipboardList, House, Layers, Phone, Search, Sprout, Star, Store } from 'lucide-react'
+import { CalendarDays, Clock, CheckCircle2, MapPin, Plus, MessageCircle, RefreshCw, Scale, ShieldCheck, Check, Sun, Sunrise, Sunset, ClipboardList, House, Layers, Phone, Search, Sprout, Star, Store } from 'lucide-react'
 import { type Data, type Flow, type Request, type Status, type MaterialLine, type IntakeRecord, type CollectionConfirmation, dayNames, kgOf, money, valueOf, isRecyclerValuePending } from '../types'
 import { Badge, Empty, Modal } from '../components/UI'
 import Avisos from '../components/Avisos'
@@ -8,7 +8,20 @@ import RecordsPanel from '../components/RecordsPanel'
 import RecyclingBreakdown from '../components/RecyclingBreakdown'
 import { closeCollection } from '../services/collectionClosure'
 import { collectionSlotKey, getCollectionClock, getNextCollectionAvailability, isCollectionDayAvailable, isCollectionSlotAvailable } from '../services/collectionSchedule'
-type Props = { flow: Flow; data: Data; update: (r: Request, notifications?: { name: string; phone: string; text: string }[], reply?: { name: string; phone: string; text: string }, expectedStatus?: Status) => void; notify: (text: string) => void; onSaveRecord: (record: IntakeRecord) => void }
+type Props = {
+    flow: Flow
+    data: Data
+    update: (
+        r: Request,
+        notifications?: { name: string; phone: string; text: string }[],
+        reply?: { name: string; phone: string; text: string },
+        expectedStatus?: Status,
+    ) => void | Promise<boolean>
+    notify: (text: string) => void
+    onSaveRecord: (record: IntakeRecord) => void
+    backendConnected?: boolean
+    onRefresh?: () => Promise<void> | void
+}
 const views = {
     pending: { label: 'Por programar', icon: Clock, tone: 'amber' },
     scheduled: { label: 'Programadas', icon: CalendarDays, tone: 'teal' },
@@ -27,7 +40,15 @@ function requestView(status: Request['status']): RequestView {
     }
 }
 
-export default function Collections({ flow, data, update, notify, onSaveRecord }: Props) {
+export default function Collections({
+    flow,
+    data,
+    update,
+    notify,
+    onSaveRecord,
+    backendConnected = false,
+    onRefresh,
+}: Props) {
     const [view, setView] = useState<View>('pending')
     const [selection, setSelection] = useState('')
     const [creatingRequest, setCreatingRequest] = useState(false)
@@ -36,6 +57,8 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
     const [generator, setGenerator] = useState('')
     const [date, setDate] = useState('')
     const [filtersOpen, setFiltersOpen] = useState(false)
+    const [refreshing, setRefreshing] = useState(false)
+    const [avisosRefresh, setAvisosRefresh] = useState(0)
     const detailTitle = useRef<HTMLHeadingElement>(null)
     const recycling = flow === 'reciclable'
     const own = data.requests.filter(r => r.flow === flow)
@@ -62,11 +85,24 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
         clearSelection()
     }
 
-    const onUpdate: Props['update'] = (request, messages, reply, expectedStatus) => {
-        update(request, messages, reply, expectedStatus)
+    async function handleRefresh() {
+        if (!onRefresh || refreshing) return
+        setRefreshing(true)
+        try {
+            await onRefresh()
+            setAvisosRefresh(n => n + 1)
+        } finally {
+            setRefreshing(false)
+        }
+    }
+
+    const onUpdate: Props['update'] = async (request, messages, reply, expectedStatus) => {
+        const result = await update(request, messages, reply, expectedStatus)
+        if (result === false) return false
+        setAvisosRefresh(n => n + 1)
         if (request.flow !== flow) {
             clearSelection()
-            return
+            return true
         }
         if (request.status !== selected?.status) {
             setView(requestView(request.status))
@@ -74,6 +110,7 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
             setReschedule(false)
             if (date && (request.date || request.created.slice(0, 10)) !== date) setDate('')
         }
+        return true
     }
 
     function open(request: Request) {
@@ -91,15 +128,20 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
         <div className="flex flex-wrap justify-between items-end gap-3 mb-5">
             <div>
                 <h1>Panel de recolecciones</h1>
-                <p className="muted mt-1">Elige una solicitud y organiza su recolección en tres pasos.</p>
+                <p className="muted mt-1">{backendConnected
+                    ? 'Revisa las solicitudes entrantes de WhatsApp o portal, ajusta los datos y programa al recolector.'
+                    : 'Elige una solicitud y organiza su recolección en tres pasos.'}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 <span className="line"><CalendarDays size={16} aria-hidden="true" />
                     {new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', timeZone: 'America/Bogota' }).format(new Date())}
                 </span>
-                <button className="btn" onClick={() => setCreatingRequest(true)}>
+                {onRefresh && <button className="btn" type="button" disabled={refreshing} onClick={handleRefresh}>
+                    <RefreshCw size={16} aria-hidden="true" /> {refreshing ? 'Actualizando…' : 'Actualizar'}
+                </button>}
+                {!backendConnected && <button className="btn" onClick={() => setCreatingRequest(true)}>
                     <Plus size={18} aria-hidden="true" /> Nueva solicitud
-                </button>
+                </button>}
             </div>
         </div>
         <div className="stat-grid collection-stages" role="group" aria-label="Etapas de recolección">
@@ -191,19 +233,26 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
                         </h2>
                         {selected?.status === 'programada' && <button className="btn collection-reschedule"
                             aria-pressed={reschedule} onClick={() => setReschedule(!reschedule)}>
-                            {reschedule ? 'Volver al cierre' : 'Reprogramar'}
+                            {reschedule ? 'Volver al detalle' : 'Reprogramar'}
                         </button>}
                     </header>
                     {selected ? <div className="panel-body">
-                        <Detail key={selected.id + selected.status + reschedule} r={selected}
-                            data={data} update={onUpdate} notify={notify} reschedule={reschedule}
-                            onRescheduled={() => setReschedule(false)} />
+                        <Detail
+                            key={selected.id + selected.status + reschedule}
+                            r={selected}
+                            data={data}
+                            update={onUpdate}
+                            notify={notify}
+                            reschedule={reschedule}
+                            avisosRefresh={avisosRefresh}
+                            onRescheduled={() => setReschedule(false)}
+                        />
                     </div> : <Empty>Selecciona una solicitud para ver los detalles.</Empty>}
                 </section>
             </div>
         </>}
         {view === 'records' && selected && <Modal title={requestAction[selected.status] + ' · ' + selected.id} onClose={clearSelection}>
-            <Detail key={selected.id + selected.status} r={selected} data={data} update={onUpdate} notify={notify} />
+            <Detail key={selected.id + selected.status} r={selected} data={data} update={onUpdate} notify={notify} avisosRefresh={avisosRefresh} />
         </Modal>}
         {creatingRequest && <NewRequest flow={flow} onClose={() => setCreatingRequest(false)} onSave={request => {
             update(request)
@@ -219,7 +268,7 @@ export default function Collections({ flow, data, update, notify, onSaveRecord }
 }
 
 const requestAction: Record<Request['status'], string> = {
-    pendiente: 'Revisar solicitud', autorizada: 'Programar recolección en 3 pasos', programada: 'Recolección programada',
+    pendiente: 'Revisar y programar', autorizada: 'Programar recolección', programada: 'Programación y seguimiento',
     completada: 'Ver cierre', rechazada: 'Ver solicitud',
 }
 
@@ -237,7 +286,7 @@ function RequestCard({ request, selected, onSelect }: { request: Request; select
         ? (r.receivedUnits ?? r.units) + ' unidades'
         : r.status === 'completada'
             ? kgOf(r).toLocaleString('es-CO') + ' kg'
-            : r.estKg > 0 ? r.estKg.toLocaleString('es-CO') + ' kg estimados' : ''
+            : r.estKg > 0 ? r.estKg.toLocaleString('es-CO') + ' kg estimados' : 'Peso pendiente'
     return <button className={'request-card collection-card' + (selected ? ' selected' : '')}
         type="button" aria-pressed={selected} onClick={onSelect}>
         <span className="collection-card-heading">
@@ -253,7 +302,7 @@ function RequestCard({ request, selected, onSelect }: { request: Request; select
         </span>
         <span className="collection-card-summary">
             <span className="collection-card-material">{r.description}</span>
-            {quantity && <span className="muted">{quantity}</span>}
+            <span className="muted">{quantity}{r.source === 'WhatsApp' ? ' · WhatsApp' : ''}</span>
         </span>
         {r.status === 'programada' && r.date && <span className="line">
             <CalendarDays size={14} aria-hidden="true" />{formatCollectionDate(r.date)}{r.time && ' · ' + r.time}
@@ -273,7 +322,23 @@ function formatCollectionDate(date: string) {
     return Number.isNaN(instant.getTime()) ? date : collectionDayFormat.format(instant)
 }
 
-function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: { r: Request; data: Data; update: Props['update']; notify: Props['notify']; reschedule?: boolean; onRescheduled?: () => void }) {
+function Detail({
+    r,
+    data,
+    update,
+    notify,
+    reschedule = false,
+    onRescheduled,
+    avisosRefresh = 0,
+}: {
+    r: Request
+    data: Data
+    update: Props['update']
+    notify: Props['notify']
+    reschedule?: boolean
+    onRescheduled?: () => void
+    avisosRefresh?: number
+}) {
     const members = data.members.filter(member => member.flow === r.flow && member.active)
     const assigned = data.members.find(member => member.id === r.assignee && member.flow === r.flow)
     const schedule = data.schedules[r.flow]
@@ -282,10 +347,14 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
     const [assignee, setAssignee] = useState(r.assignee || members[0]?.id || '')
     const [date, setDate] = useState(r.date || initial.date)
     const [slot, setSlot] = useState(r.time || initial.slot)
+    const [materialInput, setMaterialInput] = useState(r.description || '')
+    const [estKgInput, setEstKgInput] = useState(r.estKg > 0 ? String(r.estKg) : '')
+    const [referenceInput, setReferenceInput] = useState(r.preference || '')
     const [comment, setComment] = useState(r.note || '')
     const [reason, setReason] = useState('')
     const [reviewed, setReviewed] = useState(false)
     const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
     const [closureMode, setClosureMode] = useState<CollectionConfirmation['source'] | null>(null)
     const [demoMessage, setDemoMessage] = useState('')
     const [manualQuantity, setManualQuantity] = useState('')
@@ -297,7 +366,10 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
     const donation = r.kind === 'donacion'
     const quantityLabel = donation ? 'Unidades recibidas' : 'Peso total aceptado (kg)'
     const replyExample = 'LISTO ' + r.id + (donation ? ' 2' : ' 8')
-    const scheduling = r.status === 'autorizada' || reschedule
+    const isBackend = Boolean(r.backendId)
+    const scheduling = isBackend
+        ? r.status === 'pendiente' || r.status === 'autorizada' || reschedule
+        : r.status === 'autorizada' || reschedule
     const recyclerValuePending = isRecyclerValuePending(r)
 
     useEffect(() => {
@@ -333,26 +405,99 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
     }
 
     const messages = (text: string) => [{ name: r.name, phone: r.phone, text }]
-    const patch = (patch: Partial<Request>, history: string, notices?: { name: string; phone: string; text: string }[], reply?: { name: string; phone: string; text: string }) => update({ ...r, ...patch, history: [...r.history, history] }, notices, reply)
-    function authorize() { if (!reviewed || !r.description.trim()) { setError('Confirma la revisión de la descripción o evidencia.'); return } patch({ status: 'autorizada', note: comment }, 'Coordinador autorizó la solicitud', messages(`Hola ${r.name}, tu solicitud ${r.id} fue autorizada. Te confirmaremos la asignación.`)); notify('Solicitud autorizada · aviso simulado.') }
-    function program() {
+    const patch = (
+        patchData: Partial<Request>,
+        history: string,
+        notices?: { name: string; phone: string; text: string }[],
+        reply?: { name: string; phone: string; text: string },
+    ) => update({ ...r, ...patchData, history: [...r.history, history] }, notices, reply)
+
+    async function authorize() {
+        if (!isBackend && (!reviewed || !r.description.trim())) {
+            setError('Confirma la revisión de la descripción o evidencia.')
+            return
+        }
+        setSaving(true)
+        setError('')
+        try {
+            const ok = await patch(
+                { status: 'autorizada', note: comment },
+                'Coordinador tomó la solicitud en revisión',
+                isBackend ? undefined : messages(`Hola ${r.name}, tu solicitud ${r.id} fue autorizada. Te confirmaremos la asignación.`),
+            )
+            if (ok !== false && !isBackend) notify('Solicitud autorizada · aviso simulado.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    async function program() {
         const now = getCollectionClock()
         setClock(now)
         if (!scheduling || !member || !isCollectionSlotAvailable(schedule, date, slot, now)) {
-            setError('Selecciona un responsable y una franja que todavía esté disponible.')
+            setError('Selecciona un recolector compatible y una franja que todavía esté disponible.')
             return
         }
+        let parsedKg = r.estKg
+        if (isBackend) {
+            const trimmedKg = estKgInput.trim()
+            if (trimmedKg === '') {
+                parsedKg = 0
+            } else {
+                const numeric = Number(trimmedKg.replace(',', '.'))
+                if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 100_000) {
+                    setError('El peso estimado debe ser un número mayor a 0 kg o quedar vacío si está pendiente.')
+                    return
+                }
+                parsedKg = Math.round(numeric * 100) / 100
+            }
+            if (referenceInput.trim().length > 0 && referenceInput.trim().length < 3) {
+                setError('La referencia o disponibilidad debe tener al menos 3 caracteres.')
+                return
+            }
+        }
+
+        const nextDescription = isBackend ? (materialInput.trim() || r.description) : r.description
+        const nextPreference = isBackend ? (referenceInput.trim() || r.preference) : r.preference
         const location = r.delivery === 'entrega' ? 'Recepción en huerta' : 'Dirección: ' + r.address
         const instructions = 'Al finalizar, responde LISTO ' + r.id + ' seguido de ' + (donation ? 'las unidades recibidas' : 'los kilos aceptados') + '.'
-        const text = 'Solicitud ' + r.id + ': ' + r.description + '. ' + location + '. ' + date + ', ' + slot +
+        const text = 'Solicitud ' + r.id + ': ' + nextDescription + '. ' + location + '. ' + date + ', ' + slot +
             '. Nota: ' + (comment || 'Sin indicaciones') + '. ' + instructions + ' Ejemplo: ' + replyExample + '.'
-        patch({ status: 'programada', assignee, date, time: slot, note: comment }, 'Programada con ' + member.name, [
-            { name: member.name, phone: member.phone, text },
-            { name: r.name, phone: r.phone, text: 'Tu solicitud ' + r.id + ' está programada para ' +
-                date + ', ' + slot + '. Responsable: ' + member.name + ', contacto ' + member.phone + '.' },
-        ])
-        if (!r.backendId) notify(reschedule ? 'Cita reprogramada. Dos avisos simulados.' : 'Programación guardada. Dos avisos simulados.')
-        if (reschedule) onRescheduled?.()
+
+        setSaving(true)
+        setError('')
+        try {
+            const ok = await patch(
+                {
+                    status: 'programada',
+                    assignee,
+                    date,
+                    time: slot,
+                    description: nextDescription,
+                    estKg: parsedKg,
+                    preference: nextPreference,
+                    note: comment,
+                },
+                'Programada con ' + member.name,
+                isBackend ? undefined : [
+                    { name: member.name, phone: member.phone, text },
+                    {
+                        name: r.name,
+                        phone: r.phone,
+                        text: 'Tu solicitud ' + r.id + ' está programada para ' +
+                            date + ', ' + slot + '. Responsable: ' + member.name + ', contacto ' + member.phone + '.',
+                    },
+                ],
+            )
+            if (ok === false) {
+                setError('No se pudo guardar la programación. Revisa el aviso superior e intenta de nuevo.')
+                return
+            }
+            if (!isBackend) notify(reschedule ? 'Cita reprogramada. Dos avisos simulados.' : 'Programación guardada. Dos avisos simulados.')
+            if (reschedule) onRescheduled?.()
+        } finally {
+            setSaving(false)
+        }
     }
 
     function chooseClosure(mode: CollectionConfirmation['source']) {
@@ -360,7 +505,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
         setError('')
     }
 
-    function finish(event: FormEvent<HTMLFormElement>) {
+    async function finish(event: FormEvent<HTMLFormElement>) {
         event.preventDefault()
         if (!closureMode) return
         const result = closeCollection(data, r, {
@@ -373,9 +518,24 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
             setError(result.error)
             return
         }
-        update(result.request, result.notifications, result.reply, 'programada')
-        const formattedPoints = result.request.ecoPoints?.toLocaleString('es-CO')
-        if (!r.backendId) notify(formattedPoints === undefined ? 'Cierre registrado.' : 'Cierre registrado · ' + formattedPoints + ' EcoPuntos de demostración.')
+        setSaving(true)
+        setError('')
+        try {
+            const ok = await update(
+                { ...result.request, note: manualReason.trim() || result.request.note },
+                isBackend ? undefined : result.notifications,
+                isBackend ? undefined : result.reply,
+                'programada',
+            )
+            if (ok === false) {
+                setError('No se pudo registrar el cierre en el backend.')
+                return
+            }
+            const formattedPoints = result.request.ecoPoints?.toLocaleString('es-CO')
+            if (!isBackend) notify(formattedPoints === undefined ? 'Cierre registrado.' : 'Cierre registrado · ' + formattedPoints + ' EcoPuntos de demostración.')
+        } finally {
+            setSaving(false)
+        }
     }
 
     function saveBreakdown(lines: MaterialLine[]) {
@@ -384,7 +544,25 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
         notify('Desglose registrado.')
     }
 
-    function reject() { if (!reason.trim()) { setError('Escribe el motivo del rechazo.'); return } patch({ status: 'rechazada', rejected: reason }, `Solicitud rechazada: ${reason}`, messages(`No podemos gestionar la solicitud ${r.id}: ${reason}`)); notify('Solicitud rechazada · aviso simulado.') }
+    async function reject() {
+        if (reason.trim().length < 5) {
+            setError('Escribe un motivo de al menos 5 caracteres.')
+            return
+        }
+        setSaving(true)
+        setError('')
+        try {
+            const ok = await patch(
+                { status: 'rechazada', rejected: reason.trim() },
+                `Solicitud rechazada: ${reason.trim()}`,
+                isBackend ? undefined : messages(`No podemos gestionar la solicitud ${r.id}: ${reason.trim()}`),
+            )
+            if (ok !== false && !isBackend) notify('Solicitud rechazada · aviso simulado.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     return <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
             <div><h3>{r.name}</h3><p className="muted">{r.id}</p></div>
@@ -395,8 +573,12 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                 <p className="muted">{donation ? 'Donación' : 'Material'}</p>
                 <p className="font-semibold wrap-break-word">{r.description}</p>
             </div>
-            {r.status !== 'completada' && (donation || r.estKg > 0) && <p className="muted">
-                {donation ? r.units + ' unidades' : r.estKg.toLocaleString('es-CO') + ' kg estimados'}
+            {r.status !== 'completada' && <p className="muted">
+                {donation
+                    ? r.units + ' unidades'
+                    : r.estKg > 0
+                        ? r.estKg.toLocaleString('es-CO') + ' kg estimados'
+                        : 'Peso estimado pendiente'}
             </p>}
             {r.delivery === 'entrega' && <p className="line">
                 <Sprout size={15} aria-hidden="true" /> Entrega en la huerta
@@ -409,14 +591,17 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                 <dl className="collection-request-data">
                     <div><dt><MapPin size={15} aria-hidden="true" /> Dirección</dt><dd>{r.address || 'Pendiente de registrar'}</dd></div>
                     {r.phone && <div><dt><Phone size={15} aria-hidden="true" /> Teléfono</dt><dd>{r.phone}</dd></div>}
-                    <div><dt>Origen</dt><dd>{r.source === 'WhatsApp' ? 'WhatsApp simulado' : 'Registro manual'}</dd></div>
+                    <div>
+                        <dt>Origen</dt>
+                        <dd>{isBackend ? (r.source === 'WhatsApp' ? 'WhatsApp (Meta)' : 'Portal comunitario') : (r.source === 'WhatsApp' ? 'WhatsApp simulado' : 'Registro manual')}</dd>
+                    </div>
                     <div><dt>Modalidad</dt><dd>{r.delivery === 'entrega' ? 'Entrega en la huerta' : 'Recoger en dirección'}</dd></div>
-                    {r.preference && <div><dt>Preferencia de visita</dt><dd>{r.preference}</dd></div>}
-                    {r.note && <div><dt>Nota de la solicitud</dt><dd>{r.note}</dd></div>}
+                    {r.preference && <div><dt>Referencia / disponibilidad</dt><dd>{r.preference}</dd></div>}
+                    {r.note && <div><dt>Notas de la solicitud</dt><dd>{r.note}</dd></div>}
                 </dl>
             </div>
         </details>
-        {r.status === 'pendiente' && <>
+        {!isBackend && r.status === 'pendiente' && <>
             <div className="space-y-2">
                 <h3>Revisar material</h3>
                 <label className="checkline"><input type="checkbox" checked={reviewed}
@@ -454,26 +639,66 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
             </details>
         </>}
         {scheduling && <>
+            {isBackend && <div className="rounded-xl border border-[#d4dfd4] bg-[#f8faf7] p-3 space-y-3">
+                <div className="step"><b>0</b><h3>Revisar y editar datos de la solicitud</h3></div>
+                <div className="form-grid">
+                    <label className="field">Material
+                        <input
+                            value={materialInput}
+                            maxLength={100}
+                            onChange={e => { setMaterialInput(e.target.value); setError('') }}
+                            placeholder="Ej. Cáscaras de verduras / Cartón y PET"
+                        />
+                    </label>
+                    <label className="field">Peso estimado (kg)
+                        <input
+                            type="number"
+                            min="0.01"
+                            max="100000"
+                            step="0.01"
+                            value={estKgInput}
+                            onChange={e => { setEstKgInput(e.target.value); setError('') }}
+                            placeholder="Pendiente de estimar"
+                        />
+                    </label>
+                    <label className="field full">Referencia / disponibilidad
+                        <input
+                            value={referenceInput}
+                            maxLength={120}
+                            onChange={e => { setReferenceInput(e.target.value); setError('') }}
+                            placeholder="Ej. Mañana en la tarde · Portería"
+                        />
+                    </label>
+                    <label className="field full">Notas operativas
+                        <textarea
+                            value={comment}
+                            maxLength={2000}
+                            onChange={e => { setComment(e.target.value); setError('') }}
+                            placeholder="Indicaciones para el recolector o aclaraciones del material"
+                        />
+                    </label>
+                </div>
+            </div>}
             <div>
                 <div className="step"><b>1</b><h3>{r.delivery === 'entrega' ? '¿Quién recibe en la huerta?' : '¿Quién va a recoger?'}</h3></div>
                 <div className="collection-choices">
-                    {members.map(m => <button key={m.id} className={'btn flex-col items-start! text-left ' + (assignee === m.id ? 'selected' : '')}
+                    {members.map(m => <button key={m.id} type="button" className={'btn flex-col items-start! text-left ' + (assignee === m.id ? 'selected' : '')}
                         aria-pressed={assignee === m.id} onClick={() => setAssignee(m.id)}>
                         <span className="avatar">{m.name.split(' ').map(name => name[0]).slice(0, 2).join('')}</span>
                         <strong>{m.name}</strong>
                         <small>{data.requests.filter(q => q.assignee === m.id && q.date === date && q.status === 'programada').length} asignadas ese día</small>
                     </button>)}
                 </div>
-                {!members.length && <p className="error">No hay miembros activos. Pide a Administración que actualice el equipo.</p>}
+                {!members.length && <p className="error">No hay recolectores activos compatibles para este flujo.</p>}
             </div>
             <div>
                 <div className="step"><b>2</b><h3>¿Cuándo va?</h3></div>
                 <div className="collection-choices collection-date-buttons mb-2">
-                    <button className={'btn ' + (!customDateOpen && date === today ? 'selected' : '')}
+                    <button type="button" className={'btn ' + (!customDateOpen && date === today ? 'selected' : '')}
                         aria-pressed={!customDateOpen && date === today} disabled={!isCollectionDayAvailable(schedule, today, clock)} onClick={() => pickDate(today)}>Hoy</button>
-                    <button className={'btn ' + (!customDateOpen && date === tomorrow ? 'selected' : '')}
+                    <button type="button" className={'btn ' + (!customDateOpen && date === tomorrow ? 'selected' : '')}
                         aria-pressed={!customDateOpen && date === tomorrow} disabled={!isCollectionDayAvailable(schedule, tomorrow, clock)} onClick={() => pickDate(tomorrow)}>Mañana</button>
-                    <button className={'btn ' + (customDateOpen ? 'selected' : '')} aria-expanded={customDateOpen}
+                    <button type="button" className={'btn ' + (customDateOpen ? 'selected' : '')} aria-expanded={customDateOpen}
                         onClick={() => setCustomDateOpen(!customDateOpen)}><CalendarDays size={15} aria-hidden="true" /> Otro día</button>
                 </div>
                 {customDateOpen && <>
@@ -485,7 +710,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                     {schedule.slots.map((s, index) => {
                         const time = collectionSlotKey(s)
                         const Icon = [Sunrise, Sun, Sunset][index % 3]
-                        return <button className={'btn flex-col items-start! ' + (slot === time ? 'selected' : '')}
+                        return <button type="button" className={'btn flex-col items-start! ' + (slot === time ? 'selected' : '')}
                             key={time} aria-pressed={slot === time} disabled={!isCollectionSlotAvailable(schedule, date, time, clock)} onClick={() => setSlot(time)}>
                             <Icon size={18} aria-hidden="true" /><strong>{s.label}</strong><small>{time}</small>
                         </button>
@@ -495,24 +720,52 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
             <div>
                 <div className="step"><b>3</b><h3>Nota rápida <span className="muted font-normal">(opcional)</span></h3></div>
                 <div className="collection-choices mb-2">
-                    {quickNotes.map(note => <button key={note} className="btn" onClick={() => setComment(text => text ? text + ' · ' + note : note)}>{note}</button>)}
+                    {quickNotes.map(note => <button type="button" key={note} className="btn" onClick={() => setComment(text => text ? text + ' · ' + note : note)}>{note}</button>)}
                 </div>
-                <textarea className="control" value={comment} onChange={e => setComment(e.target.value)}
-                    aria-label="Nota para el responsable" placeholder="Nota para el responsable" />
+                {!isBackend && <textarea className="control" value={comment} onChange={e => setComment(e.target.value)}
+                    aria-label="Nota para el responsable" placeholder="Nota para el responsable" />}
             </div>
-            <button className="btn primary w-full min-h-[56px]" onClick={program} disabled={!member || !dateAllowed || !slotAllowed}>
+            <button type="button" className="btn primary w-full min-h-[56px]" onClick={program} disabled={saving || !member || !dateAllowed || !slotAllowed}>
                 <MessageCircle size={19} aria-hidden="true" /><Check size={17} aria-hidden="true" />
-                {reschedule ? 'Reprogramar y avisar por WhatsApp' : r.flow === 'reciclable' ? 'Asignar y enviar a WhatsApp' : 'Programar y avisar por WhatsApp'}
+                {saving
+                    ? 'Guardando programación…'
+                    : isBackend
+                        ? (reschedule ? 'Reprogramar y notificar al recolector' : 'Validar y notificar al recolector')
+                        : (reschedule ? 'Reprogramar y avisar por WhatsApp' : r.flow === 'reciclable' ? 'Asignar y enviar a WhatsApp' : 'Programar y avisar por WhatsApp')}
             </button>
-            <p className="muted text-center">Demostración: los avisos se guardan como simulaciones.</p>
+            {!isBackend && <p className="muted text-center">Demostración: los avisos se guardan como simulaciones.</p>}
+            {isBackend && r.status !== 'programada' && <details className="collection-disclosure">
+                <summary>Más acciones</summary>
+                <div className="collection-disclosure-body space-y-3">
+                    {r.status === 'pendiente' && <button type="button" className="btn" disabled={saving} onClick={authorize}>
+                        <ShieldCheck size={17} aria-hidden="true" /> Marcar en revisión
+                    </button>}
+                    <div className="stepsection">
+                        <label className="field">Motivo de cancelación<input value={reason}
+                            onChange={e => setReason(e.target.value)} placeholder="Ej. solicitud duplicada o sin acceso" /></label>
+                        <button type="button" className="btn danger mt-2" disabled={saving} onClick={reject}>Cancelar solicitud</button>
+                    </div>
+                </div>
+            </details>}
         </>}
-        {r.status === 'programada' && !reschedule && <section className="space-y-4" aria-labelledby="waiting-confirmation">
-            <div className="note space-y-2">
+        {r.status === 'programada' && !reschedule && <section className="space-y-4" aria-labelledby="saved-schedule-title">
+            <div className="rounded-xl border border-[#b5d8ce] bg-[#e4f4ef] p-3 space-y-1.5">
                 <div className="flex items-center gap-2">
-                    <Clock size={19} aria-hidden="true" /><h3 id="waiting-confirmation">Esperando confirmación del recolector</h3>
+                    <CheckCircle2 size={18} aria-hidden="true" /><h3 id="saved-schedule-title">Programación guardada</h3>
                 </div>
                 <p><strong>{assigned?.name ?? 'Sin responsable registrado'}</strong> · {r.date} · {r.time}</p>
-                <p>El responsable informa {donation ? 'las unidades recibidas' : 'el peso aceptado'} con el código de la solicitud.</p>
+                <p className="muted">
+                    Material: <strong>{r.description}</strong> · {r.estKg > 0 ? r.estKg.toLocaleString('es-CO') + ' kg estimados' : 'Peso pendiente'}
+                </p>
+                {r.preference && <p className="muted">Referencia: {r.preference}</p>}
+                {r.note && <p className="muted">Notas: {r.note}</p>}
+            </div>
+            {r.backendId && <Avisos key={r.backendId} solicitud={r.backendId} refreshKey={avisosRefresh} />}
+            <div className="note space-y-1">
+                <div className="flex items-center gap-2">
+                    <Clock size={17} aria-hidden="true" /><strong>Esperando confirmación de recolección</strong>
+                </div>
+                <p>El responsable puede confirmar con <strong>{replyExample}</strong> o puedes registrar el cierre manual de respaldo.</p>
             </div>
             <div className="flex flex-wrap gap-2">
                 {!r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
@@ -528,23 +781,25 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                         placeholder={replyExample} onChange={e => { setDemoMessage(e.target.value); setError('') }} required /></label>
                 </> : <>
                     <h3>Registrar cierre de respaldo</h3>
-                    <label className="field">{quantityLabel}<input type="number" min="0" step={donation ? 1 : '0.01'}
-                        max={donation ? r.units : 999_999.99} value={manualQuantity} required
+                    <label className="field">{quantityLabel}<input type="number" min="0.01" step={donation ? 1 : '0.01'}
+                        max={donation ? r.units : 100_000} value={manualQuantity} required
                         onChange={e => { setManualQuantity(e.target.value); setError('') }} /></label>
                     <label className="field">Motivo del cierre manual<textarea value={manualReason} required
                         onChange={e => { setManualReason(e.target.value); setError('') }} /></label>
                     <label className="checkline"><input type="checkbox" checked={closureConfirmed}
                         onChange={e => setClosureConfirmed(e.target.checked)} required /> Confirmo la cantidad recibida.</label>
                 </>}
-                <button className="btn primary min-h-[56px]" type="submit">
-                    {closureMode === 'whatsapp-demo' ? 'Procesar respuesta simulada' : 'Registrar cierre manual'}
+                <button className="btn primary min-h-[56px]" type="submit" disabled={saving}>
+                    {saving
+                        ? 'Registrando cierre…'
+                        : closureMode === 'whatsapp-demo' ? 'Procesar respuesta simulada' : 'Registrar cierre manual'}
                 </button>
             </form>}
         </section>}
         {r.status === 'completada' && <div className="space-y-3">
             {r.confirmation && <div className="note space-y-1">
                 <h3>{(donation ? r.receivedUnits : kgOf(r)) === 0 ? 'Cierre sin material aceptado' :
-                    r.confirmation.source === 'whatsapp-demo' ? 'Confirmación simulada del recolector' : 'Cierre manual de respaldo'}</h3>
+                    r.confirmation.source === 'whatsapp-demo' ? 'Confirmación simulada del recolector' : 'Cierre confirmado'}</h3>
                 <p>{r.confirmation.confirmedBy} · <time dateTime={r.confirmation.at}>
                     {new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Bogota' }).format(new Date(r.confirmation.at))}
                 </time></p>
@@ -574,12 +829,13 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                     <p>Cálculo parametrizable sujeto a validación FSD.</p>
                 </>}
             </div>
+            {r.backendId && <Avisos key={r.backendId} solicitud={r.backendId} refreshKey={avisosRefresh} />}
         </div>}
-        {r.rejected && r.status !== 'programada' && <p className="note">Material rechazado / motivo: {r.rejected}</p>}{error && <p className="error" role="alert">{error}</p>}
+        {r.rejected && r.status !== 'programada' && <p className="note">Material rechazado / motivo: {r.rejected}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <details className="collection-disclosure">
-            <summary>Seguimiento y avisos</summary>
+            <summary>Historial de estados</summary>
             <div className="collection-disclosure-body space-y-2">
-                {r.backendId && <Avisos key={r.backendId} solicitud={r.backendId} />}
                 {r.history.map((entry, index) => <p key={index} className="line">
                     <CheckCircle2 size={15} aria-hidden="true" />{entry}
                 </p>)}
@@ -587,7 +843,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                     <strong>{message.direction === 'in' ? 'De ' : 'Para '}{message.name} · WhatsApp simulado</strong>
                     <p>{message.text}</p>
                 </div>)}
-                <div className="flex flex-wrap items-end gap-2">
+                {!r.backendId && <div className="flex flex-wrap items-end gap-2">
                     <label className="field flex-1 min-w-[150px]">Comentario interno
                         <input value={comment} onChange={e => setComment(e.target.value)} />
                     </label>
@@ -595,7 +851,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: 
                         patch({ note: comment }, 'Comentario: ' + comment)
                         notify('Comentario guardado.')
                     }}>Guardar comentario</button>
-                </div>
+                </div>}
             </div>
         </details>
     </section>

@@ -226,24 +226,30 @@ El recolector debe existir, estar activo y tener rol `HUERTERO` para orgánicos 
 
 ### PATCH `/api/solicitudes/{id}/programar`
 
-Solo el coordinador del flujo. Es la única vía a `PROGRAMADA` (RN-02). Admite `RECIBIDA`, `EN_REVISION`, `ASIGNADA` o una `PROGRAMADA` previa (reprogramación).
+Solo el coordinador del flujo. Es la única vía a `PROGRAMADA` (RN-02). Admite `RECIBIDA`, `EN_REVISION`, `ASIGNADA` o una `PROGRAMADA` previa (reprogramación). También acepta de forma opcional las métricas revisadas por el coordinador para guardarlas junto con la programación, el historial y los avisos en la misma transacción.
 
 ```json
 {
   "recolector_id": "f7c8...",
   "fecha_programada": "2026-11-21",
   "hora_programada": "09:30",
-  "nota_operativa": "Ruta de la mañana"
+  "nota_operativa": "Ruta de la mañana",
+  "subtipo_material": "Cáscaras y restos de vegetales",
+  "cantidad_estimada_kg": 12.5,
+  "disponibilidad_usuario": "Portería conjunto 2",
+  "observaciones": "Llevar baldes extra."
 }
 ```
 
 Reglas de validación:
 
-- Los tres campos son obligatorios.
+- `recolector_id`, `fecha_programada` y `hora_programada` son obligatorios.
+- `subtipo_material`, `cantidad_estimada_kg`, `disponibilidad_usuario` y `observaciones` son opcionales; cuando se incluyen, actualizan la solicitud en la misma transacción que registra el historial y encola los avisos.
+- Repetir una programación con exactamente los mismos datos es idempotente y no duplica historial ni avisos.
 - `fecha_programada` no puede ser anterior a hoy en Bogotá.
 - Si es hoy, la hora debe ser futura.
 - El recolector debe ser compatible con el flujo y estar activo.
-- Se registran `coordinador_id`, `recolector_id`, fecha, hora e historial.
+- Se registran `coordinador_id`, `recolector_id`, fecha, hora, métricas revisadas, historial y avisos por destinatario.
 
 ### POST `/api/solicitudes/{id}/cerrar`
 
@@ -378,10 +384,21 @@ Todas las rutas `/api/admin/*` exigen rol `ADMIN`. El administrador puede consul
 
 - `GET /api/admin/usuarios?rol=&es_piloto=&activo=&q=&limit=&offset=` — listado administrativo.
 - `PATCH /api/admin/usuarios/{id}/piloto` — body `{"es_piloto": true}`. Solo aplica a `HOGAR` y `UNIDAD_PRODUCTIVA`; otro rol responde `422 USUARIO_NO_APLICA_PILOTO`.
+- `PATCH /api/admin/usuarios/{id}/consentimiento-whatsapp` — body `{"aceptado": true, "origen": "PILOTO"}`. Registra o revoca explícitamente el consentimiento de avisos WhatsApp; los mensajes entrantes comunes nunca otorgan ni reactivan consentimiento. En Meta se exige consentimiento explícito y vigente tanto para solicitante como para recolector al encolar, antes de enviar y antes de reintentar (si falta o fue revocado, la programación se conserva y el aviso queda en `SIN_CONSENTIMIENTO`).
 
-## 7. Integración WhatsApp con Twilio
+## 7. Integración WhatsApp (Meta Cloud API v25.0 y Twilio)
 
-El webhook vive en el mismo backend FastAPI y reutiliza los servicios de `app.services.solicitudes`; no duplica el cálculo de puntos ni cambia estados por su cuenta. Meta Cloud API quedó reemplazada por Twilio WhatsApp.
+El webhook vive en el mismo backend FastAPI (`/api/webhooks/whatsapp`) y coexisten ambos proveedores: Meta Cloud API (JSON) y Twilio (`application/x-www-form-urlencoded`). Ambos reutilizan los servicios de `app.services.solicitudes`; nunca duplican la lógica de permisos, transiciones o puntos.
+
+### Flujo Meta Cloud API (Graph API v25.0 + Gemini `google-genai`)
+
+- `GET /api/webhooks/whatsapp` — exige `WHATSAPP_VERIFY_TOKEN` explícito (sin valor por defecto), verifica `hub.mode=subscribe` y `hub.verify_token` en tiempo constante y devuelve `hub.challenge` con `200` (o `403` si falta o no coincide).
+- `POST /api/webhooks/whatsapp` (`application/json`) — verifica `X-Hub-Signature-256` sobre el cuerpo bruto con `WHATSAPP_APP_SECRET` (`403 WEBHOOK_FIRMA_INVALIDA`) y valida `value.metadata.phone_number_id == WHATSAPP_PHONE_NUMBER_ID` (`403 WEBHOOK_NUMERO_INVALIDO`).
+- Registra mensajes de texto en `mensajes_whatsapp` (`proveedor='META'`), deduplica por `wamid` (`wa_message_id` único), procesa eventos `statuses` por su ruta de conciliación de `avisos_whatsapp` y responde `200` de inmediato tras confirmar en base de datos.
+- El despachador (`python -m app.whatsapp.despacho`) procesa en segundo plano los textos pendientes: vincula remitentes activos (`HOGAR`/`UNIDAD_PRODUCTIVA`), anonimiza antes de consultar a Gemini (`google-genai`, `GEMINI_MODEL=gemini-3.5-flash-lite`), valida el esquema (`flujo`, `material`, `cantidad`, `unidad`, `referencia_general`, `notas`), convierte gramos a kilos (o deja peso pendiente si faltan datos o la unidad no es de peso), crea la `Solicitud` en `RECIBIDA` y la vincula al mensaje en la misma transacción. Los mensajes ambiguos quedan en `ACLARACION_PENDIENTE` y los fallos transitorios de Gemini se reintentan con backoff.
+- Los avisos salientes se envían por `POST https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/messages` usando plantillas aprobadas y `biz_opaque_callback_data` para conciliación. Los rechazos 4xx pasan a `FALLIDO` (reintentables); los timeouts o 5xx quedan en `CONCILIAR` y bloquean el reenvío hasta conciliación por webhook.
+
+### Flujo Twilio (coexistente)
 
 ### Endpoint
 

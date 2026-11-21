@@ -82,6 +82,7 @@ export interface SolicitudApi {
   hora_programada: string | null
   puntos_otorgados: number
   regla_puntos_id: number | null
+  origen_canal?: 'PORTAL' | 'WHATSAPP'
   creado_en: string
   actualizado_en: string
 }
@@ -186,7 +187,7 @@ export const ROLES_LABELS: Record<RolUsuario, string> = {
   ADMIN: 'Administrador',
 }
 
-export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
+export const API_BASE_URL = (import.meta.env?.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 const TOKEN_STORAGE_KEY = 'ecoconecta_access_token'
 
@@ -223,9 +224,10 @@ async function request<T>(
     body?: unknown
     auth?: boolean
     query?: Record<string, string | number | boolean | undefined | null>
+    signal?: AbortSignal
   } = {},
 ): Promise<T> {
-  const { method = 'GET', body, auth = true, query } = options
+  const { method = 'GET', body, auth = true, query, signal } = options
   const url = new URL(`${API_BASE_URL}${path}`)
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -254,8 +256,12 @@ async function request<T>(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
     })
-  } catch {
+  } catch (err) {
+    if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+      throw new ApiError(0, 'ABORTADO', 'Petición cancelada por cambio de sesión.')
+    }
     throw new ApiError(
       0,
       'ERROR_RED',
@@ -291,7 +297,12 @@ async function request<T>(
       mensaje = detail
     }
 
-    if (response.status === 401 && auth && (codigo === 'TOKEN_EXPIRADO' || codigo === 'TOKEN_INVALIDO' || codigo === 'NO_AUTENTICADO')) {
+    if (
+      !signal?.aborted &&
+      response.status === 401 &&
+      auth &&
+      (codigo === 'TOKEN_EXPIRADO' || codigo === 'TOKEN_INVALIDO' || codigo === 'NO_AUTENTICADO')
+    ) {
       setStoredToken(null)
       unauthorizedHandler?.()
     }
@@ -302,34 +313,46 @@ async function request<T>(
   return parsed as T
 }
 
-export type Aviso = { id: number; evento: string; destinatario: string; estado: string; error: string | null }
+export type Aviso = {
+  id: number
+  evento: string
+  destinatario: string
+  estado: string
+  error: string | null
+  proveedor?: string
+  plantilla?: string | null
+  actualizado_en?: string | null
+}
 export const api = {
-  avisos: (id: number) => request<Aviso[]>(`/api/solicitudes/${id}/avisos`),
-  reintentarAviso: (id: number, aviso: number) =>
-    request(`/api/solicitudes/${id}/avisos/${aviso}/reintentar`, { method: 'POST' }),
+  avisos: (id: number, signal?: AbortSignal) =>
+    request<Aviso[]>(`/api/solicitudes/${id}/avisos`, { signal }),
+  reintentarAviso: (id: number, aviso: number, signal?: AbortSignal) =>
+    request(`/api/solicitudes/${id}/avisos/${aviso}/reintentar`, { method: 'POST', signal }),
   // Autenticación
-  async login(telefono: string, password: string): Promise<TokenResponseApi> {
+  async login(telefono: string, password: string, signal?: AbortSignal): Promise<TokenResponseApi> {
     const res = await request<TokenResponseApi>('/api/auth/login', {
       method: 'POST',
       auth: false,
       body: { telefono: telefono.trim(), password },
+      signal,
     })
     setStoredToken(res.access_token)
     return res
   },
 
-  async demoLogin(rol: RolUsuario): Promise<TokenResponseApi> {
+  async demoLogin(rol: RolUsuario, signal?: AbortSignal): Promise<TokenResponseApi> {
     const res = await request<TokenResponseApi>('/api/auth/demo-login', {
       method: 'POST',
       auth: false,
       body: { rol },
+      signal,
     })
     setStoredToken(res.access_token)
     return res
   },
 
-  me(): Promise<UsuarioApi> {
-    return request<UsuarioApi>('/api/auth/me')
+  me(signal?: AbortSignal): Promise<UsuarioApi> {
+    return request<UsuarioApi>('/api/auth/me', { signal })
   },
 
   logout(): void {
@@ -337,29 +360,34 @@ export const api = {
   },
 
   // Catálogos
-  listarRecolectores(flujo?: FlujoResiduo): Promise<RecolectorCatalogoApi[]> {
+  listarRecolectores(flujo?: FlujoResiduo, signal?: AbortSignal): Promise<RecolectorCatalogoApi[]> {
     return request<RecolectorCatalogoApi[]>('/api/recolectores', {
       query: { flujo },
+      signal,
     })
   },
 
-  listarReglasActivas(): Promise<ReglaPuntosApi[]> {
-    return request<ReglaPuntosApi[]>('/api/reglas-puntos')
+  listarReglasActivas(signal?: AbortSignal): Promise<ReglaPuntosApi[]> {
+    return request<ReglaPuntosApi[]>('/api/reglas-puntos', { signal })
   },
 
-  listarContenidosEducativos(categoria?: string): Promise<ContenidoEducativoApi[]> {
+  listarContenidosEducativos(categoria?: string, signal?: AbortSignal): Promise<ContenidoEducativoApi[]> {
     return request<ContenidoEducativoApi[]>('/api/contenidos-educativos', {
       query: { categoria },
+      signal,
     })
   },
 
   // Solicitudes
-  listarSolicitudes(params?: {
-    flujo?: FlujoResiduo
-    estado?: EstadoSolicitud
-    limit?: number
-    offset?: number
-  }): Promise<SolicitudListApi> {
+  listarSolicitudes(
+    params?: {
+      flujo?: FlujoResiduo
+      estado?: EstadoSolicitud
+      limit?: number
+      offset?: number
+    },
+    signal?: AbortSignal,
+  ): Promise<SolicitudListApi> {
     return request<SolicitudListApi>('/api/solicitudes', {
       query: {
         flujo: params?.flujo,
@@ -367,15 +395,16 @@ export const api = {
         limit: params?.limit ?? 100,
         offset: params?.offset ?? 0,
       },
+      signal,
     })
   },
 
-  obtenerSolicitud(id: number): Promise<SolicitudApi> {
-    return request<SolicitudApi>(`/api/solicitudes/${id}`)
+  obtenerSolicitud(id: number, signal?: AbortSignal): Promise<SolicitudApi> {
+    return request<SolicitudApi>(`/api/solicitudes/${id}`, { signal })
   },
 
-  obtenerHistorial(id: number): Promise<HistorialEstadoApi[]> {
-    return request<HistorialEstadoApi[]>(`/api/solicitudes/${id}/historial`)
+  obtenerHistorial(id: number, signal?: AbortSignal): Promise<HistorialEstadoApi[]> {
+    return request<HistorialEstadoApi[]>(`/api/solicitudes/${id}/historial`, { signal })
   },
 
   crearSolicitud(payload: {
@@ -415,16 +444,33 @@ export const api = {
       fecha_programada: string
       hora_programada: string
       nota_operativa?: string | null
+      subtipo_material?: string | null
+      cantidad_estimada_kg?: number | null
+      disponibilidad_usuario?: string | null
+      observaciones?: string | null
     },
   ): Promise<SolicitudApi> {
+    const body: Record<string, unknown> = {
+      recolector_id: payload.recolector_id,
+      fecha_programada: payload.fecha_programada,
+      hora_programada: payload.hora_programada,
+      nota_operativa: payload.nota_operativa?.trim() || null,
+    }
+    if (payload.subtipo_material !== undefined) {
+      body.subtipo_material = payload.subtipo_material?.trim() || null
+    }
+    if (payload.cantidad_estimada_kg !== undefined) {
+      body.cantidad_estimada_kg = payload.cantidad_estimada_kg
+    }
+    if (payload.disponibilidad_usuario !== undefined) {
+      body.disponibilidad_usuario = payload.disponibilidad_usuario?.trim() || null
+    }
+    if (payload.observaciones !== undefined) {
+      body.observaciones = payload.observaciones?.trim() || null
+    }
     return request<SolicitudApi>(`/api/solicitudes/${id}/programar`, {
       method: 'PATCH',
-      body: {
-        recolector_id: payload.recolector_id,
-        fecha_programada: payload.fecha_programada,
-        hora_programada: payload.hora_programada,
-        nota_operativa: payload.nota_operativa?.trim() || null,
-      },
+      body,
     })
   },
 
@@ -452,13 +498,16 @@ export const api = {
   },
 
   // Administración (ADMIN)
-  adminListarReglas(params?: {
-    flujo?: FlujoResiduo
-    tipo_generador?: TipoGenerador
-    activa?: boolean
-    limit?: number
-    offset?: number
-  }): Promise<ReglaPuntosApi[]> {
+  adminListarReglas(
+    params?: {
+      flujo?: FlujoResiduo
+      tipo_generador?: TipoGenerador
+      activa?: boolean
+      limit?: number
+      offset?: number
+    },
+    signal?: AbortSignal,
+  ): Promise<ReglaPuntosApi[]> {
     return request<ReglaPuntosApi[]>('/api/admin/reglas-puntos', {
       query: {
         flujo: params?.flujo,
@@ -467,6 +516,7 @@ export const api = {
         limit: params?.limit ?? 100,
         offset: params?.offset ?? 0,
       },
+      signal,
     })
   },
 

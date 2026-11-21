@@ -14,8 +14,15 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import Base, create_db_engine
-from app.models import HistorialEstado, Solicitud, Usuario
+from app.models import (
+    AvisoWhatsApp,
+    HistorialEstado,
+    MensajeWhatsapp,
+    Solicitud,
+    Usuario,
+)
 from app.schemas import CerrarSolicitud, ProgramarSolicitud, SolicitudCrear
+from app.schemas_whatsapp import ExtraccionSolicitudMeta
 from app.seed import run_seed
 from app.services.errors import ErrorDominio
 from app.services.solicitudes import (
@@ -24,6 +31,11 @@ from app.services.solicitudes import (
     programar_solicitud,
 )
 from app.tiempo import hoy_bogota
+from app.whatsapp.meta import (
+    MensajeMetaEntrante,
+    procesar_entrante_meta_uno,
+    registrar_lote_meta,
+)
 
 
 def _url_postgres() -> str:
@@ -136,6 +148,152 @@ def test_cierre_concurrente_acredita_puntos_una_sola_vez():
                 )
             )
             assert cierres == 1
+    finally:
+        with engine.begin() as connection:
+            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            connection.execute(text("CREATE SCHEMA public"))
+        engine.dispose()
+
+
+def test_postgres_evento_meta_duplicado_y_programacion_repetida(monkeypatch):
+    """Valida en PostgreSQL que duplicados concurrentes crean una solicitud y repetir programación genera un aviso por destinatario."""
+    url = _url_postgres()
+    engine = create_db_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            connection.execute(text("CREATE SCHEMA public"))
+        Base.metadata.create_all(engine)
+        fabrica = sessionmaker(
+            bind=engine,
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+            class_=Session,
+        )
+        with fabrica() as session:
+            run_seed(session, default_password="PruebaConcurrente2026!", env={})
+            hogar = session.scalar(
+                select(Usuario).where(Usuario.telefono == "+573000000108")
+            )
+            coordinador = session.scalar(
+                select(Usuario).where(Usuario.rol == "COORD_RECICLADORES")
+            )
+            reciclador = session.scalar(
+                select(Usuario)
+                .where(Usuario.rol == "RECICLADOR")
+                .order_by(Usuario.telefono)
+            )
+            assert hogar and coordinador and reciclador
+            telefono_hogar = hogar.telefono
+            coord_id = coordinador.id
+            reciclador_id = reciclador.id
+
+        # 1. Duplicados concurrentes del mismo wamid en PostgreSQL
+        barrera_webhook = Barrier(4)
+
+        def registrar_concurrente(_idx: int):
+            with fabrica() as session:
+                barrera_webhook.wait(timeout=10)
+                return registrar_lote_meta(
+                    session,
+                    [
+                        MensajeMetaEntrante(
+                            wamid="wamid.pg.concurrente.1",
+                            telefono=telefono_hogar,
+                            texto="Tengo 2500 gramos de cartón",
+                        )
+                    ],
+                    [],
+                )
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            lotes = list(executor.map(registrar_concurrente, range(4)))
+
+        assert sum(r.guardados for r in lotes) == 1
+        assert sum(r.duplicados for r in lotes) == 3
+
+        # 2. Workers concurrentes con FOR UPDATE SKIP LOCKED crean exactamente una solicitud
+        monkeypatch.setattr(
+            "app.whatsapp.meta.extraer_solicitud_gemini",
+            lambda _texto: ExtraccionSolicitudMeta(
+                flujo="RECICLABLE",
+                material="Cartón",
+                cantidad=2500,
+                unidad="G",
+                referencia_general="Mañana en la tarde",
+                es_solicitud=True,
+            ),
+        )
+        barrera_worker = Barrier(3)
+
+        def correr_worker(_idx: int) -> bool:
+            barrera_worker.wait(timeout=10)
+            return procesar_entrante_meta_uno(fabrica)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            procesados = list(executor.map(correr_worker, range(3)))
+
+        assert procesados.count(True) == 1
+
+        with fabrica() as session:
+            solicitudes = session.scalars(select(Solicitud)).all()
+            assert len(solicitudes) == 1
+            solicitud = solicitudes[0]
+            assert solicitud.cantidad_estimada_kg == Decimal("2.50")
+            mensajes = session.scalars(select(MensajeWhatsapp)).all()
+            assert len(mensajes) == 1
+            assert mensajes[0].solicitud_id == solicitud.id
+            solicitud_id = solicitud.id
+
+        # 3. Repetir programación concurrentemente genera exactamente un aviso por destinatario
+        barrera_prog = Barrier(3)
+        fecha = hoy_bogota() + timedelta(days=1)
+
+        def programar_concurrente(_idx: int) -> str:
+            with fabrica() as session:
+                coord = session.get(Usuario, coord_id)
+                assert coord is not None
+                barrera_prog.wait(timeout=10)
+                programar_solicitud(
+                    session,
+                    coord,
+                    solicitud_id,
+                    ProgramarSolicitud(
+                        recolector_id=reciclador_id,
+                        fecha_programada=fecha,
+                        hora_programada=time(10, 0),
+                        subtipo_material="Cartón seco",
+                        cantidad_estimada_kg=Decimal("3.00"),
+                        disponibilidad_usuario="Portería principal",
+                        observaciones="Llevar costales",
+                    ),
+                )
+                return "ok"
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            assert list(executor.map(programar_concurrente, range(3))) == [
+                "ok",
+                "ok",
+                "ok",
+            ]
+
+        with fabrica() as session:
+            avisos = session.scalars(
+                select(AvisoWhatsApp).where(AvisoWhatsApp.solicitud_id == solicitud_id)
+            ).all()
+            assert len(avisos) == 2
+            assert sorted(a.destinatario for a in avisos) == [
+                "RECOLECTOR",
+                "SOLICITANTE",
+            ]
+            transiciones = session.scalar(
+                select(func.count(HistorialEstado.id)).where(
+                    HistorialEstado.solicitud_id == solicitud_id,
+                    HistorialEstado.estado_nuevo == "PROGRAMADA",
+                )
+            )
+            assert transiciones == 1
     finally:
         with engine.begin() as connection:
             connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))

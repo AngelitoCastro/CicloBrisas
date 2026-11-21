@@ -9,6 +9,7 @@ import {
   type RolUsuario,
   type SolicitudApi,
   type TipoGenerador,
+  type UsuarioApi,
 } from './api'
 import { getCollectionClock } from './collectionSchedule'
 import { loadPointRules } from './pointRules'
@@ -27,6 +28,12 @@ export const ROLE_TO_API_ROLE: Record<Role, RolUsuario> = {
   huerta: 'COORD_HUERTEROS',
   reciclaje: 'COORD_RECICLADORES',
   admin: 'ADMIN',
+}
+
+export const API_ROLE_TO_ROLE: Partial<Record<RolUsuario, Role>> = {
+  COORD_HUERTEROS: 'huerta',
+  COORD_RECICLADORES: 'reciclaje',
+  ADMIN: 'admin',
 }
 
 function apiFlowToUi(flujo: FlujoResiduo): Flow {
@@ -90,6 +97,8 @@ export function mapSolicitudToRequest(
   const matchedRule = s.regla_puntos_id
     ? reglas?.find(r => r.id === s.regla_puntos_id)
     : undefined
+  const source: Request['source'] =
+    s.origen_canal === 'WHATSAPP' ? 'WhatsApp' : 'Manual'
 
   return {
     id: s.codigo_publico,
@@ -104,14 +113,14 @@ export function mapSolicitudToRequest(
         .join(' · ') || 'Sin dirección registrada',
     generator: apiGeneratorToUi(s.solicitante.rol),
     pilot: Boolean(s.solicitante.es_piloto),
-    description: s.subtipo_material || s.observaciones || 'Residuos para recolección',
+    description: s.subtipo_material || 'Material por revisar',
     evidence: previous?.evidence ?? '',
     estKg: s.cantidad_estimada_kg ?? 0,
     units: 0,
     delivery: 'recoger',
     preference: s.disponibilidad_usuario,
     status,
-    source: 'WhatsApp',
+    source,
     assignee: s.recolector?.id ?? previous?.assignee,
     date: s.fecha_programada ?? undefined,
     time: s.hora_programada ?? undefined,
@@ -209,6 +218,8 @@ function extractApiTime(slotText: string | undefined, date: string): string {
 }
 
 export interface BackendSnapshot {
+  role: Role
+  usuario: UsuarioApi
   requests: Request[]
   members: Member[]
   pointRules: EcoPointRules
@@ -216,33 +227,58 @@ export interface BackendSnapshot {
   reglasRaw: ReglaPuntosApi[]
 }
 
-export async function loadBackendForRole(
-  role: Role,
+export async function loadBackendForAuthenticatedUser(
+  usuario: UsuarioApi,
   previousData: Data,
+  signal?: AbortSignal,
 ): Promise<BackendSnapshot> {
-  await api.demoLogin(ROLE_TO_API_ROLE[role])
+  const role = API_ROLE_TO_ROLE[usuario.rol]
+  if (!role) {
+    throw new ApiError(
+      403,
+      'ROL_NO_AUTORIZADO',
+      'Esta vista es exclusiva para coordinadores de Huerta, Reciclaje o Administración.',
+    )
+  }
+
   const [solicitudesRes, recolectores, reglas] = await Promise.all([
-    api.listarSolicitudes({ limit: 100 }),
-    api.listarRecolectores(),
+    api.listarSolicitudes({ limit: 100 }, signal),
+    api.listarRecolectores(undefined, signal),
     role === 'admin'
-      ? api.adminListarReglas({ activa: true, limit: 100 })
-      : api.listarReglasActivas(),
+      ? api.adminListarReglas({ activa: true, limit: 100 }, signal)
+      : api.listarReglasActivas(signal),
   ])
 
   const historiales = await Promise.all(
     solicitudesRes.items.map(s =>
-      api.obtenerHistorial(s.id).catch(() => [] as HistorialEstadoApi[]),
+      api.obtenerHistorial(s.id, signal).catch(err => {
+        if (signal?.aborted) throw err
+        return [] as HistorialEstadoApi[]
+      }),
     ),
   )
 
-  const prevById = new Map(previousData.requests.map(r => [r.id, r]))
+  const prevById = new Map(
+    previousData.requests
+      .filter(r => typeof r.backendId === 'number')
+      .map(r => [r.id, r]),
+  )
   const requests = solicitudesRes.items.map((s, idx) =>
     mapSolicitudToRequest(s, historiales[idx], reglas, prevById.get(s.codigo_publico)),
   )
   const members = mapRecolectoresToMembers(recolectores)
   const { pointRules, ruleIds } = mapReglasToPointRules(reglas)
 
-  return { requests, members, pointRules, ruleIds, reglasRaw: reglas }
+  return { role, usuario, requests, members, pointRules, ruleIds, reglasRaw: reglas }
+}
+
+export async function loadBackendForRole(
+  role: Role,
+  previousData: Data,
+  signal?: AbortSignal,
+): Promise<BackendSnapshot> {
+  const auth = await api.demoLogin(ROLE_TO_API_ROLE[role], signal)
+  return loadBackendForAuthenticatedUser(auth.usuario, previousData, signal)
 }
 
 export async function syncTransitionToBackend(
@@ -261,11 +297,11 @@ export async function syncTransitionToBackend(
     const hist = await api.obtenerHistorial(backendId).catch(() => [])
     return {
       updated: mapSolicitudToRequest(res, hist, reglasRaw, next),
-      message: `Solicitud ${res.codigo_publico} marcada en revisión en el backend.`,
+      message: `Solicitud ${res.codigo_publico} marcada en revisión.`,
     }
   }
 
-  // 2. Programar o reprogramar (-> PROGRAMADA)
+  // 2. Programar o reprogramar (-> PROGRAMADA) con métricas revisadas
   if (
     next.status === 'programada' &&
     next.assignee &&
@@ -274,6 +310,9 @@ export async function syncTransitionToBackend(
       previous.assignee !== next.assignee ||
       previous.date !== next.date ||
       previous.time !== next.time ||
+      previous.description !== next.description ||
+      previous.estKg !== next.estKg ||
+      previous.preference !== next.preference ||
       previous.note !== next.note)
   ) {
     const hora = extractApiTime(next.time, next.date)
@@ -282,6 +321,13 @@ export async function syncTransitionToBackend(
       fecha_programada: next.date,
       hora_programada: hora,
       nota_operativa: next.note,
+      subtipo_material: next.description?.trim() || null,
+      cantidad_estimada_kg: next.estKg > 0 ? next.estKg : null,
+      disponibilidad_usuario:
+        next.preference && next.preference.trim().length >= 3
+          ? next.preference.trim()
+          : undefined,
+      observaciones: next.note?.trim() || null,
     })
     const hist = await api.obtenerHistorial(backendId).catch(() => [])
     return {
@@ -289,7 +335,7 @@ export async function syncTransitionToBackend(
         ...next,
         time: res.hora_programada ?? hora,
       }),
-      message: `Solicitud ${res.codigo_publico} programada en PostgreSQL (${res.fecha_programada} ${res.hora_programada ?? hora}).`,
+      message: `Programación guardada para ${res.codigo_publico} (${res.fecha_programada} ${res.hora_programada ?? hora}). Revisa el estado del aviso WhatsApp.`,
     }
   }
 
@@ -308,7 +354,7 @@ export async function syncTransitionToBackend(
     }
     const res = await api.cerrarSolicitud(backendId, {
       cantidad_real_kg: kg,
-      nota_operativa: next.note || 'Cierre registrado desde el panel coordinador.',
+      nota_operativa: next.note || 'Cierre manual registrado desde el panel coordinador.',
     })
     const hist = await api.obtenerHistorial(backendId).catch(() => [])
     const mapped = mapSolicitudToRequest(res, hist, reglasRaw, next)
@@ -319,7 +365,7 @@ export async function syncTransitionToBackend(
     }
     return {
       updated: mapped,
-      message: `Cierre guardado en PostgreSQL · ${res.puntos_otorgados.toLocaleString('es-CO')} EcoPuntos acreditados (${res.calculo_puntos.formula}).`,
+      message: `Cierre guardado · ${res.puntos_otorgados.toLocaleString('es-CO')} EcoPuntos acreditados (${res.calculo_puntos.formula}).`,
     }
   }
 

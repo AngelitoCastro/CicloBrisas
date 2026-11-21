@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 from sqlalchemy import select, func
 from app.models import AvisoWhatsApp, HistorialEstado
 from app.services.errors import PermisoDenegado, NoEncontrado, Conflicto
 from app.services.solicitudes import es_coordinador_de_flujo
+from app.whatsapp.notificaciones import (
+    ESTADO_SIN_CONSENTIMIENTO,
+    tiene_consentimiento_para_aviso,
+)
 
 from fastapi import APIRouter, Path, Query, status
 
@@ -238,10 +243,24 @@ def _autorizar_avisos(db, usuario, solicitud_id):
 @router.get("/{solicitud_id}/avisos")
 def avisos(solicitud_id: SolicitudId, usuario: UsuarioActual, db: SesionDB):
     _autorizar_avisos(db, usuario, solicitud_id)
-    filas = db.scalars(select(AvisoWhatsApp).where(AvisoWhatsApp.solicitud_id == solicitud_id)
-                       .order_by(AvisoWhatsApp.id.desc()))
-    return [dict(id=a.id, evento=a.evento, destinatario=a.destinatario, estado=a.estado, error=a.error)
-            for a in filas]
+    filas = db.scalars(
+        select(AvisoWhatsApp)
+        .where(AvisoWhatsApp.solicitud_id == solicitud_id)
+        .order_by(AvisoWhatsApp.id.desc())
+    )
+    return [
+        dict(
+            id=a.id,
+            evento=a.evento,
+            destinatario=a.destinatario,
+            estado=a.estado,
+            error=a.error,
+            proveedor=a.proveedor,
+            plantilla=a.plantilla,
+            actualizado_en=a.actualizado_en.isoformat() if a.actualizado_en else None,
+        )
+        for a in filas
+    ]
 
 
 @router.post("/{solicitud_id}/avisos/{aviso_id}/reintentar", status_code=202)
@@ -254,6 +273,16 @@ def reintentar(solicitud_id: SolicitudId, aviso_id: int, usuario: UsuarioActual,
     ultimo = db.scalar(select(func.max(HistorialEstado.id)).where(HistorialEstado.solicitud_id == solicitud_id))
     if aviso.estado != "FALLIDO" or ultimo != aviso.historial_id:
         raise Conflicto("AVISO_NO_REINTENTABLE", "Solo puedes reintentar un aviso fallido de la transición vigente.")
+    if not tiene_consentimiento_para_aviso(db, aviso):
+        aviso.estado = ESTADO_SIN_CONSENTIMIENTO
+        aviso.error = ESTADO_SIN_CONSENTIMIENTO
+        aviso.actualizado_en = datetime.now(UTC)
+        db.commit()
+        raise Conflicto(
+            "SIN_CONSENTIMIENTO",
+            "El destinatario no tiene consentimiento vigente de WhatsApp.",
+        )
     aviso.estado, aviso.intento, aviso.sid, aviso.error = "PENDIENTE", uuid4().hex, None, None
+    aviso.actualizado_en = datetime.now(UTC)
     db.commit()
     return {"estado": "PENDIENTE"}

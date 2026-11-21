@@ -151,10 +151,25 @@ Fuentes oficiales consultadas: [chat completions clásico](https://learn.microso
 
 ### Avisos de programación y cierre
 
-Aplicar `alembic upgrade head` antes de arrancar esta versión de la API. Ejecutar el servicio Compose `avisos` junto con `backend`, o iniciar `python -m app.whatsapp.despacho` como proceso persistente desde `backend/` con el mismo entorno que la API. Cada fila de `avisos_whatsapp` corresponde a una transición y un destinatario. El historial anterior permanece en `mensajes_whatsapp`.
+Aplicar `alembic upgrade head` antes de arrancar esta versión de la API (incluye la revisión `20261121_0004` con columnas de proveedor/reintentos en `mensajes_whatsapp`, metadatos de envío en `avisos_whatsapp` y tabla `consentimientos_whatsapp`). Ejecutar el servicio Compose `avisos` junto con `backend`, o iniciar `python -m app.whatsapp.despacho` como proceso persistente desde `backend/` con el mismo entorno que la API. Cada fila de `avisos_whatsapp` corresponde a una transición y un destinatario. El historial anterior permanece en `mensajes_whatsapp`.
 
-Configurar `WEBHOOK_PUBLIC_URL` con la URL HTTPS completa del webhook entrante, terminada en `/api/webhooks/whatsapp`. El proxy debe enrutar también `POST /api/webhooks/whatsapp/estado/{intento}`. El worker pasa esa URL a Twilio por mensaje. Las cuatro variables opcionales `TWILIO_CONTENT_SID_PROGRAMADA_RECOLECTOR`, `TWILIO_CONTENT_SID_PROGRAMADA_SOLICITANTE`, `TWILIO_CONTENT_SID_RECOLECTADA_RECOLECTOR` y `TWILIO_CONTENT_SID_RECOLECTADA_SOLICITANTE` seleccionan plantillas aprobadas con una variable de texto (1). Sin ellas se usa la plantilla genérica configurada con una variable, o texto libre en una conversación habilitada. Configurar y verificar las plantillas antes del piloto.
+### Flujo Meta Cloud API (Graph API v25.0) + Gemini (`google-genai`) y piloto
 
-En el detalle del coordinador, «Seguimiento y avisos» consulta `GET /api/solicitudes/{id}/avisos`. «Reintentar aviso» llama a `POST /api/solicitudes/{id}/avisos/{aviso_id}/reintentar`. Un fallo definitivo admite un reintento individual mientras la transición siga vigente. ENVIADO corresponde al envío por el proveedor, ENTREGADO y LEIDO a callbacks firmados. CONCILIAR indica que el proceso reclamó el aviso y aún se desconoce el resultado. Consultar los registros de Twilio antes de cualquier intervención manual; los callbacks firmados pueden completar ese estado. Vigilar el número de PENDIENTE, CONCILIAR y FALLIDO y revisar el código de Twilio de los fallos nuevos.
+1. **Migración y semilla:** desde `backend/`, aplicar `python -m alembic upgrade head` y cargar cuentas de prueba con `python -m app.seed` (usando contraseñas configuradas en `.env`).
+2. **Arranque de los tres procesos:**
+   - **FastAPI (puerto 8000):** `cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000`
+   - **Despachador (bandeja Meta + extracción Gemini + envío Graph API v25.0):** `cd backend && python -m app.whatsapp.despacho`
+   - **React (puerto 5173):** `cd frontend && npm ci && npm run dev`
+3. **Configuración de Meta y Gemini en `.env`:**
+   - Definir `WHATSAPP_PROVEEDOR=meta`, `WHATSAPP_VERIFY_TOKEN` (obligatorio y explícito en el `GET`), `WHATSAPP_APP_SECRET` (verificación `X-Hub-Signature-256` sobre el cuerpo original), `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_GRAPH_VERSION=v25.0`.
+   - Configurar las plantillas aprobadas en Meta (`WHATSAPP_TEMPLATE_LANG`, `WHATSAPP_TEMPLATE_PROGRAMADA_RECOLECTOR`, `WHATSAPP_TEMPLATE_PROGRAMADA_SOLICITANTE`, `WHATSAPP_TEMPLATE_RECOLECTADA_RECOLECTOR`, `WHATSAPP_TEMPLATE_RECOLECTADA_SOLICITANTE`).
+   - Definir `GEMINI_API_KEY` y `GEMINI_MODEL=gemini-3.5-flash-lite` (valor inicial recomendado dado el retiro de `gemini-2.5-flash` el 1 de diciembre de 2026).
+   - Para el piloto, desactivar el acceso de demostración fijando `ENTORNO=production` en el backend y `VITE_ENABLE_DEMO_LOGIN=false` en el frontend.
+4. **Túnel HTTPS y suscripción en Meta:**
+   - Apuntar el túnel HTTPS al backend local en el puerto `8000` (callback `https://<tu-tunel>/api/webhooks/whatsapp`).
+   - Verificar el webhook en Meta Developers usando `WHATSAPP_VERIFY_TOKEN` y suscribir el campo `messages` (recibe textos entrantes y eventos de entrega `statuses` en la misma ruta).
+5. **Verificación del piloto:** enviar un mensaje real desde una cuenta de prueba activa (hogar o unidad productiva), confirmar que aparece en **Por programar** del panel correcto, editar/validar material, peso estimado, referencia y notas, pulsar **Validar y notificar al recolector**, y verificar por separado la programación guardada y el estado `ENTREGADO` reportado por WhatsApp al recolector.
 
-Para el piloto, usar dos números de prueba autorizados y un remitente de WhatsApp habilitado. Programar, verificar ambos avisos, responder `LISTO ECO-AAAA-NNNNNN 8` desde el recolector y revisar las dos confirmaciones y la única acreditación. Repetir con un destinatario de prueba no habilitado para comprobar el fallo aislado y el reintento tras corregir su configuración.
+En el detalle del coordinador, la tarjeta de avisos consulta `GET /api/solicitudes/{id}/avisos`. **Reintentar aviso** llama a `POST /api/solicitudes/{id}/avisos/{aviso_id}/reintentar` solo para fallos confirmados (`FALLIDO`) de la transición vigente. `CONCILIAR` indica que el resultado del envío quedó incierto (por ejemplo por timeout o 5xx): el reintento permanece bloqueado hasta recibir la conciliación del proveedor por webhook (`statuses` vía `wamid` o `biz_opaque_callback_data`).
+
+Para el flujo alterno de Twilio, configurar `WEBHOOK_PUBLIC_URL` con la URL HTTPS completa terminada en `/api/webhooks/whatsapp` y `TWILIO_CONTENT_SID_*`. Ambos flujos coexisten en `/api/webhooks/whatsapp` (JSON firmado con `X-Hub-Signature-256` para Meta; `application/x-www-form-urlencoded` firmado con `X-Twilio-Signature` para Twilio).

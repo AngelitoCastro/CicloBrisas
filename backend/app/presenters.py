@@ -63,6 +63,12 @@ def construir_solicitud_response(
         es_admin or es_propietario or es_coordinador or es_recolector_asignado
     )
 
+    mensajes_cargados = solicitud.__dict__.get("mensajes_whatsapp")
+    es_whatsapp = bool(
+        mensajes_cargados
+        and any(m.direccion == "ENTRANTE" for m in mensajes_cargados)
+    )
+
     return SolicitudPublicaResponse(
         id=solicitud.id,
         codigo_publico=solicitud.codigo_publico,
@@ -83,6 +89,7 @@ def construir_solicitud_response(
         hora_programada=solicitud.hora_programada,
         puntos_otorgados=solicitud.puntos_otorgados,
         regla_puntos_id=solicitud.regla_puntos_id,
+        origen_canal="WHATSAPP" if es_whatsapp else "PORTAL",
         creado_en=solicitud.creado_en,
         actualizado_en=solicitud.actualizado_en,
     )

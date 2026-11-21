@@ -366,6 +366,13 @@ class MensajeWhatsapp(Base):
             "ix_mensajes_whatsapp_telefono_creado", "telefono_remitente", "creado_en"
         ),
         Index("uq_mensajes_whatsapp_wa_message_id", "wa_message_id", unique=True),
+        Index(
+            "ix_mensajes_whatsapp_bandeja",
+            "proveedor",
+            "direccion",
+            "estado_envio",
+            "proximo_intento_en",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -410,6 +417,15 @@ class MensajeWhatsapp(Base):
     media_tipo: Mapped[str | None] = mapped_column(String(20), nullable=True)
     media_mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
     texto_extraido: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proveedor: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="TWILIO",
+        server_default=text("'TWILIO'"),
+    )
+    proximo_intento_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     solicitud: Mapped[Solicitud | None] = relationship(
         back_populates="mensajes_whatsapp"
@@ -457,7 +473,9 @@ __all__ = [
     "FLUJOS_RESIDUO",
     "ROLES_USUARIO",
     "TIPOS_GENERADOR",
+    "AvisoWhatsApp",
     "Base",
+    "ConsentimientoWhatsApp",
     "ContenidoEducativo",
     "HistorialEstado",
     "MensajeWhatsapp",
@@ -469,6 +487,7 @@ __all__ = [
 
 class AvisoWhatsApp(Base):
     """Instantánea del aviso asociada a una transición ya guardada."""
+
     __tablename__ = "avisos_whatsapp"
     __table_args__ = (UniqueConstraint("historial_id", "destinatario"),)
 
@@ -480,6 +499,53 @@ class AvisoWhatsApp(Base):
     telefono: Mapped[str] = mapped_column(String(25))
     contenido: Mapped[str] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(String(20), default="PENDIENTE", index=True)
-    intento: Mapped[str] = mapped_column(String(32), unique=True, default=lambda: uuid.uuid4().hex)
+    intento: Mapped[str] = mapped_column(
+        String(32), unique=True, default=lambda: uuid.uuid4().hex
+    )
     sid: Mapped[str | None] = mapped_column(String(100), unique=True)
     error: Mapped[str | None] = mapped_column(String(80))
+    proveedor: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="AUTO",
+        server_default=text("'AUTO'"),
+    )
+    plantilla: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    actualizado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+        server_default=func.now(),
+    )
+
+
+class ConsentimientoWhatsApp(Base):
+    """Consentimiento explícito del solicitante para recibir avisos por WhatsApp."""
+
+    __tablename__ = "consentimientos_whatsapp"
+
+    usuario_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    aceptado: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
+    origen: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="WHATSAPP_ENTRANTE",
+        server_default=text("'WHATSAPP_ENTRANTE'"),
+    )
+    actualizado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+        server_default=func.now(),
+    )
