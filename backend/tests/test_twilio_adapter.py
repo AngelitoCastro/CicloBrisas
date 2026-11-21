@@ -155,6 +155,7 @@ def test_enviar_texto_reintenta_sin_variables_cuando_template_no_las_acepta(
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
     monkeypatch.setenv("TWILIO_WHATSAPP_NUMBER", "+14155238886")
     monkeypatch.setenv("TWILIO_CONTENT_SID", "HX123")
+    monkeypatch.delenv("TWILIO_CONTENT_SIN_VARIABLES", raising=False)
     monkeypatch.setattr(cliente, "Client", lambda *_: cliente_twilio)
 
     assert cliente.enviar_texto("+573001112222", "Aviso\nimportante") == "SMreintento"

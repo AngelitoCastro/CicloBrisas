@@ -124,7 +124,8 @@ Códigos relevantes:
     "rol": "UNIDAD_PRODUCTIVA",
     "telefono": "+573000000107",
     "direccion": "Calle Ficticia 101 # 10-20 (Piloto)",
-    "sector_manzana": "Manzana A - Piloto FSD"
+    "sector_manzana": "Manzana A - Piloto FSD",
+    "es_piloto": true
   },
   "coordinador": {
     "id": "e5b6...",
@@ -363,6 +364,15 @@ Todas las rutas `/api/admin/*` exigen rol `ADMIN`. El administrador puede consul
 ```
 
 `GET /api/reglas-puntos` (autenticado, cualquier rol) devuelve solo reglas activas para mostrar la fórmula y la nota “Cálculo parametrizable sujeto a validación FSD”.
+
+### Catálogos compartidos (recolectores y educación)
+
+- `GET /api/recolectores?flujo=` — devuelve recolectores activos (`id`, `nombre`, `rol`, `telefono`, `activo`) para poblar el selector de encargado al asignar o programar:
+  - `COORD_HUERTEROS`: solo `HUERTERO`; pedir `flujo=RECICLABLE` responde `403 FLUJO_NO_AUTORIZADO`.
+  - `COORD_RECICLADORES`: solo `RECICLADOR`; pedir `flujo=ORGANICO` responde `403 FLUJO_NO_AUTORIZADO`.
+  - `ADMIN`: todos los recolectores activos (con filtro opcional por `flujo`).
+  - Otros roles: `403 ROL_NO_AUTORIZADO`.
+- `GET /api/contenidos-educativos?categoria=` — devuelve contenidos publicados (`ORGANICO`, `RECICLABLE`, `HUERTA`, `RUTAS`) ordenados por `orden` para la sección educativa del portal comunitario.
 
 ### Cuentas y modo piloto
 

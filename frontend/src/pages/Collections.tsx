@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CalendarDays, Clock, CheckCircle2, MapPin, Plus, MessageCircle, Scale, ShieldCheck, Check, Sun, Sunrise, Sunset, ClipboardList, House, Layers, Phone, Search, Sprout, Star, Store } from 'lucide-react'
 import { type Data, type Flow, type Request, type Status, type MaterialLine, type IntakeRecord, type CollectionConfirmation, dayNames, kgOf, money, valueOf, isRecyclerValuePending } from '../types'
 import { Badge, Empty, Modal } from '../components/UI'
+import Avisos from '../components/Avisos'
 import NewRequest from '../components/NewRequest'
 import RecordsPanel from '../components/RecordsPanel'
 import RecyclingBreakdown from '../components/RecyclingBreakdown'
@@ -354,7 +355,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
             { name: r.name, phone: r.phone, text: 'Tu solicitud ' + r.id + ' está programada para ' +
                 date + ', ' + slot + '. Responsable: ' + member.name + ', contacto ' + member.phone + '.' },
         ])
-        notify(reschedule ? 'Cita reprogramada. Dos avisos simulados.' : 'Programación guardada. Dos avisos simulados.')
+        if (!r.backendId) notify(reschedule ? 'Cita reprogramada. Dos avisos simulados.' : 'Programación guardada. Dos avisos simulados.')
         if (reschedule) onRescheduled?.()
     }
 
@@ -378,7 +379,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
         }
         update(result.request, result.notifications, result.reply, 'programada')
         const formattedPoints = result.request.ecoPoints?.toLocaleString('es-CO')
-        notify(formattedPoints === undefined ? 'Cierre registrado.' : 'Cierre registrado · ' + formattedPoints + ' EcoPuntos de demostración.')
+        if (!r.backendId) notify(formattedPoints === undefined ? 'Cierre registrado.' : 'Cierre registrado · ' + formattedPoints + ' EcoPuntos de demostración.')
     }
 
     function saveBreakdown(lines: MaterialLine[]) {
@@ -519,7 +520,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
             </div>
             {linkedDemo && <p className="muted">Envía la confirmación desde la vista Recolector.</p>}
             <div className="flex flex-wrap gap-2">
-                {!linkedDemo && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
+                {!linkedDemo && !r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
                     onClick={() => chooseClosure('whatsapp-demo')}><MessageCircle size={18} aria-hidden="true" /> Simular respuesta</button>}
                 <button className="btn" aria-expanded={closureMode === 'manual'}
                     onClick={() => chooseClosure('manual')}><Scale size={18} aria-hidden="true" /> Cierre manual de respaldo</button>
@@ -573,7 +574,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
             <div className="note">
                 <h3>EcoPuntos del habitante</h3>
                 {r.ecoPoints === undefined ? <p>Este cierre no tiene EcoPuntos registrados.</p> : <>
-                    <p className="text-xl font-bold text-forest">{r.ecoPoints.toLocaleString('es-CO')} EcoPuntos de demostración</p>
+                    <p className="text-xl font-bold text-forest">{r.ecoPoints.toLocaleString('es-CO')} EcoPuntos{r.backendId ? '' : ' de demostración'}</p>
                     {r.ecoPointRule && <p>Regla aplicada: {r.ecoPointRule.base.toLocaleString('es-CO')} base + {r.ecoPointRule.perKg.toLocaleString('es-CO')} por kg.</p>}
                     <p>Cálculo parametrizable sujeto a validación FSD.</p>
                 </>}
@@ -583,10 +584,11 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
         <details className="collection-disclosure">
             <summary>Seguimiento y avisos</summary>
             <div className="collection-disclosure-body space-y-2">
+                {r.backendId && <Avisos key={r.backendId} solicitud={r.backendId} />}
                 {r.history.map((entry, index) => <p key={index} className="line">
                     <CheckCircle2 size={15} aria-hidden="true" />{entry}
                 </p>)}
-                {data.messages.filter(message => message.requestId === r.id).map(message => <div key={message.id} className="note">
+                {!r.backendId && data.messages.filter(message => message.requestId === r.id).map(message => <div key={message.id} className="note">
                     <strong>{message.direction === 'in' ? 'De ' : 'Para '}{message.name} · WhatsApp simulado</strong>
                     <p>{message.text}</p>
                 </div>)}

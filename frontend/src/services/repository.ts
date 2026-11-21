@@ -11,6 +11,8 @@ export const repository = {
       const raw = localStorage.getItem(KEY)
       if (!raw) return structuredClone(initialData)
       const previous = JSON.parse(raw) as Data
+      // Descarta datos que quedaron guardados por la sincronización temporal con la API.
+      if (previous.requests?.some(r => typeof r.backendId === 'number')) return structuredClone(initialData)
       return {
         ...previous,
         intakeRecords: Array.isArray(previous.intakeRecords) ? previous.intakeRecords : [],

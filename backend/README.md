@@ -148,3 +148,13 @@ Fuentes oficiales consultadas: [chat completions clásico](https://learn.microso
 ## Semilla piloto
 
 `python -m app.seed` carga 10 cuentas ficticias (todos los roles), 4 reglas de puntos y 4 contenidos educativos. Es idempotente: ejecutarla dos veces no duplica registros ni borra puntos acumulados. Los teléfonos y roles están documentados en [API_CONTRATO.md](API_CONTRATO.md). La contraseña se toma de `SEED_DEFAULT_PASSWORD` o de las variables `SEED_PASSWORD_*`; no se guarda en Git.
+
+### Avisos de programación y cierre
+
+Aplicar `alembic upgrade head` antes de arrancar esta versión de la API. Ejecutar el servicio Compose `avisos` junto con `backend`, o iniciar `python -m app.whatsapp.despacho` como proceso persistente desde `backend/` con el mismo entorno que la API. Cada fila de `avisos_whatsapp` corresponde a una transición y un destinatario. El historial anterior permanece en `mensajes_whatsapp`.
+
+Configurar `WEBHOOK_PUBLIC_URL` con la URL HTTPS completa del webhook entrante, terminada en `/api/webhooks/whatsapp`. El proxy debe enrutar también `POST /api/webhooks/whatsapp/estado/{intento}`. El worker pasa esa URL a Twilio por mensaje. Las cuatro variables opcionales `TWILIO_CONTENT_SID_PROGRAMADA_RECOLECTOR`, `TWILIO_CONTENT_SID_PROGRAMADA_SOLICITANTE`, `TWILIO_CONTENT_SID_RECOLECTADA_RECOLECTOR` y `TWILIO_CONTENT_SID_RECOLECTADA_SOLICITANTE` seleccionan plantillas aprobadas con una variable de texto (1). Sin ellas se usa la plantilla genérica configurada con una variable, o texto libre en una conversación habilitada. Configurar y verificar las plantillas antes del piloto.
+
+En el detalle del coordinador, «Seguimiento y avisos» consulta `GET /api/solicitudes/{id}/avisos`. «Reintentar aviso» llama a `POST /api/solicitudes/{id}/avisos/{aviso_id}/reintentar`. Un fallo definitivo admite un reintento individual mientras la transición siga vigente. ENVIADO corresponde al envío por el proveedor, ENTREGADO y LEIDO a callbacks firmados. CONCILIAR indica que el proceso reclamó el aviso y aún se desconoce el resultado. Consultar los registros de Twilio antes de cualquier intervención manual; los callbacks firmados pueden completar ese estado. Vigilar el número de PENDIENTE, CONCILIAR y FALLIDO y revisar el código de Twilio de los fallos nuevos.
+
+Para el piloto, usar dos números de prueba autorizados y un remitente de WhatsApp habilitado. Programar, verificar ambos avisos, responder `LISTO ECO-AAAA-NNNNNN 8` desde el recolector y revisar las dos confirmaciones y la única acreditación. Repetir con un destinatario de prueba no habilitado para comprobar el fallo aislado y el reintento tras corregir su configuración.

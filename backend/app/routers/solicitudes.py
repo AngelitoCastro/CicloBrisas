@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
+from sqlalchemy import select, func
+from app.models import AvisoWhatsApp, HistorialEstado
+from app.services.errors import PermisoDenegado, NoEncontrado, Conflicto
+from app.services.solicitudes import es_coordinador_de_flujo
 
 from fastapi import APIRouter, Path, Query, status
 
@@ -222,3 +227,33 @@ def cancelar(
 
 
 __all__ = ["router"]
+
+
+def _autorizar_avisos(db, usuario, solicitud_id):
+    solicitud = obtener_solicitud(db, usuario, solicitud_id)
+    if usuario.rol != "ADMIN" and not es_coordinador_de_flujo(usuario, solicitud.flujo):
+        raise PermisoDenegado()
+
+
+@router.get("/{solicitud_id}/avisos")
+def avisos(solicitud_id: SolicitudId, usuario: UsuarioActual, db: SesionDB):
+    _autorizar_avisos(db, usuario, solicitud_id)
+    filas = db.scalars(select(AvisoWhatsApp).where(AvisoWhatsApp.solicitud_id == solicitud_id)
+                       .order_by(AvisoWhatsApp.id.desc()))
+    return [dict(id=a.id, evento=a.evento, destinatario=a.destinatario, estado=a.estado, error=a.error)
+            for a in filas]
+
+
+@router.post("/{solicitud_id}/avisos/{aviso_id}/reintentar", status_code=202)
+def reintentar(solicitud_id: SolicitudId, aviso_id: int, usuario: UsuarioActual, db: SesionDB):
+    _autorizar_avisos(db, usuario, solicitud_id)
+    aviso = db.scalar(select(AvisoWhatsApp).where(AvisoWhatsApp.solicitud_id == solicitud_id,
+                     AvisoWhatsApp.id == aviso_id).with_for_update())
+    if not aviso:
+        raise NoEncontrado("Aviso inexistente.")
+    ultimo = db.scalar(select(func.max(HistorialEstado.id)).where(HistorialEstado.solicitud_id == solicitud_id))
+    if aviso.estado != "FALLIDO" or ultimo != aviso.historial_id:
+        raise Conflicto("AVISO_NO_REINTENTABLE", "Solo puedes reintentar un aviso fallido de la transición vigente.")
+    aviso.estado, aviso.intento, aviso.sid, aviso.error = "PENDIENTE", uuid4().hex, None, None
+    db.commit()
+    return {"estado": "PENDIENTE"}

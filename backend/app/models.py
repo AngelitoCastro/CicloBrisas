@@ -465,3 +465,21 @@ __all__ = [
     "Solicitud",
     "Usuario",
 ]
+
+
+class AvisoWhatsApp(Base):
+    """Instantánea del aviso asociada a una transición ya guardada."""
+    __tablename__ = "avisos_whatsapp"
+    __table_args__ = (UniqueConstraint("historial_id", "destinatario"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    historial_id: Mapped[int] = mapped_column(ForeignKey("historial_estados.id"))
+    solicitud_id: Mapped[int] = mapped_column(ForeignKey("solicitudes.id"), index=True)
+    evento: Mapped[str] = mapped_column(String(20))
+    destinatario: Mapped[str] = mapped_column(String(20))
+    telefono: Mapped[str] = mapped_column(String(25))
+    contenido: Mapped[str] = mapped_column(Text)
+    estado: Mapped[str] = mapped_column(String(20), default="PENDIENTE", index=True)
+    intento: Mapped[str] = mapped_column(String(32), unique=True, default=lambda: uuid.uuid4().hex)
+    sid: Mapped[str | None] = mapped_column(String(100), unique=True)
+    error: Mapped[str | None] = mapped_column(String(80))

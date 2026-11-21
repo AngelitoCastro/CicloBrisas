@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from app.models import HistorialEstado, ReglaPuntos, Solicitud, Usuario
+from app.models import ContenidoEducativo, HistorialEstado, ReglaPuntos, Solicitud, Usuario
 from app.schemas import (
     CalculoPuntosResponse,
     CierreSolicitudResponse,
     ContactoSolicitante,
+    ContenidoEducativoResponse,
     HistorialEstadoResponse,
+    RecolectorCatalogoResponse,
     ReglaPuntosResponse,
     SolicitudPublicaResponse,
     UsuarioResponse,
@@ -35,6 +37,7 @@ def _contacto_solicitante(
         telefono=solicitante.telefono if incluir_contacto else None,
         direccion=solicitante.direccion if incluir_contacto else None,
         sector_manzana=solicitante.sector_manzana if incluir_contacto else None,
+        es_piloto=bool(solicitante.es_piloto),
     )
 
 
@@ -122,9 +125,21 @@ def construir_usuario_response(usuario: Usuario) -> UsuarioResponse:
     return UsuarioResponse.model_validate(usuario)
 
 
+def construir_recolector_response(usuario: Usuario) -> RecolectorCatalogoResponse:
+    return RecolectorCatalogoResponse.model_validate(usuario)
+
+
+def construir_contenido_response(
+    contenido: ContenidoEducativo,
+) -> ContenidoEducativoResponse:
+    return ContenidoEducativoResponse.model_validate(contenido)
+
+
 __all__ = [
     "construir_cierre_response",
+    "construir_contenido_response",
     "construir_historial_response",
+    "construir_recolector_response",
     "construir_regla_response",
     "construir_solicitud_response",
     "construir_usuario_response",

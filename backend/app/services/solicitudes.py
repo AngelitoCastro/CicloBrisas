@@ -36,7 +36,7 @@ from app.services.errors import (
     PermisoDenegado,
     Validacion,
 )
-from app.services.eventos import emitir
+from app.whatsapp.notificaciones import encolar
 from app.tiempo import ahora_bogota, hoy_bogota
 
 COORDINADOR_POR_FLUJO: dict[str, str] = {
@@ -220,16 +220,16 @@ def _registrar_historial(
     estado_nuevo: str,
     actor_id: uuid.UUID | None,
     nota: str | None,
-) -> None:
-    db.add(
-        HistorialEstado(
-            solicitud_id=solicitud.id,
-            estado_anterior=estado_anterior,
-            estado_nuevo=estado_nuevo,
-            cambiado_por=actor_id,
-            nota_operativa=nota,
-        )
+) -> HistorialEstado:
+    registro = HistorialEstado(
+        solicitud_id=solicitud.id,
+        estado_anterior=estado_anterior,
+        estado_nuevo=estado_nuevo,
+        cambiado_por=actor_id,
+        nota_operativa=nota,
     )
+    db.add(registro)
+    return registro
 
 
 def _codigo_publico(solicitud_id: int) -> str:
@@ -437,6 +437,9 @@ def programar_solicitud(
     _validar_fecha_hora_programada(datos.fecha_programada, datos.hora_programada)
     recolector = _validar_recolector(db, datos.recolector_id, solicitud.flujo)
 
+    if (solicitud.estado == "PROGRAMADA" and solicitud.recolector_id == recolector.id
+            and solicitud.fecha_programada == datos.fecha_programada and solicitud.hora_programada == datos.hora_programada):
+        return solicitud
     anterior = solicitud.estado
     solicitud.estado = "PROGRAMADA"
     solicitud.coordinador_id = coordinador.id
@@ -444,7 +447,7 @@ def programar_solicitud(
     solicitud.fecha_programada = datos.fecha_programada
     solicitud.hora_programada = datos.hora_programada
     accion = "Reprogramada" if anterior == "PROGRAMADA" else "Programada"
-    _registrar_historial(
+    historial = _registrar_historial(
         db,
         solicitud,
         estado_anterior=anterior,
@@ -458,12 +461,12 @@ def programar_solicitud(
         ),
     )
     try:
+        encolar(db, historial, solicitud, recolector)
         db.commit()
     except Exception:
         db.rollback()
         raise
     db.refresh(solicitud)
-    emitir("solicitud_programada", solicitud.id)
     return solicitud
 
 
@@ -630,7 +633,7 @@ def _cerrar_intento(
     )
     if nota_operativa:
         nota = f"{nota} Nota de campo: {nota_operativa}"
-    _registrar_historial(
+    historial = _registrar_historial(
         db,
         solicitud,
         estado_anterior="PROGRAMADA",
@@ -638,6 +641,7 @@ def _cerrar_intento(
         actor_id=actor_id,
         nota=nota,
     )
+    encolar(db, historial, solicitud, solicitud.recolector)
     db.commit()
     db.refresh(solicitud)
 
@@ -684,7 +688,6 @@ def cerrar_solicitud(
                 cantidad_real_kg=datos.cantidad_real_kg,
                 nota_operativa=datos.nota_operativa,
             )
-            emitir("solicitud_cerrada", resultado.solicitud.id)
             return resultado
         except IntegrityError as exc:
             db.rollback()

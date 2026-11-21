@@ -15,12 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import settings
 from app.routers import admin, auth, catalogos, solicitudes, whatsapp
 from app.schemas import HealthResponse
-from app.services import eventos
 from app.services.errors import ErrorDominio
-from app.whatsapp.notificaciones import manejar_evento
 
 logger = logging.getLogger("ecoconecta.api")
-eventos.suscribir(manejar_evento)
 
 
 def _detalle_error(codigo: str, mensaje: str, **extra: Any) -> dict[str, Any]:

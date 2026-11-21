@@ -20,6 +20,7 @@ from app.security import hash_password
 from app.services.errors import ErrorDominio
 from app.services.solicitudes import (
     cerrar_solicitud_por_codigo,
+    buscar_solicitud_por_codigo,
     crear_solicitud,
     solicitud_activa_del_solicitante,
 )
@@ -268,9 +269,13 @@ def _ejecutar_intencion(
                 ),
             )
         except ErrorDominio as exc:
+            if exc.codigo == "SOLICITUD_YA_CERRADA":
+                previa = buscar_solicitud_por_codigo(db, codigo)
+                return f"{codigo} ya cerrada: {previa.cantidad_real_kg} kg y {previa.puntos_otorgados} EcoPuntos.", previa.id, None, None
             return exc.mensaje, None, None, None
+        # La confirmación al recolector se envía desde la bandeja transaccional.
         return (
-            f"Cierre registrado para {codigo}: {resultado.puntos_otorgados:.2f} EcoPuntos.",
+            "" if usuario.id == resultado.solicitud.recolector_id else f"Cierre registrado para {codigo}.",
             resultado.solicitud.id,
             None,
             None,
@@ -291,6 +296,16 @@ def _clasificar_mensaje(
     perfil: str,
 ) -> tuple[ClasificacionIA, str | None]:
     if mensaje.tipo == "text":
+        texto = (mensaje.texto or "").strip()
+        comando = re.fullmatch(r"LISTO\s+(ECO-[\d-]+)\s+(\d{1,6}(?:[.,]\d{1,2})?)(?:\s*kg)?", texto, re.I)
+        if comando:
+            peso = Decimal(comando[2].replace(",", "."))
+            if 0 < peso <= 100000 and _normalizar_codigo(comando[1]):
+                return ClasificacionIA(intencion=IntencionIA.CIERRE_RECOLECCION, codigo_solicitud=comando[1],
+                                       peso_kg=peso, respuesta_usuario="Cierre"), texto
+            return ClasificacionIA(intencion=IntencionIA.OTRO, respuesta_usuario="Verifica el código y los kilos."), texto
+        if re.match(r"^LISTO\s+ECO", texto, re.I):
+            return ClasificacionIA(intencion=IntencionIA.OTRO, respuesta_usuario="Usa LISTO, el código ECO y los kilos. Ejemplo: LISTO ECO-001 8."), texto
         return (
             ia.clasificar_texto(
                 mensaje.texto or "", historial=historial, perfil=perfil
@@ -386,7 +401,8 @@ def procesar_mensaje(mensaje: MensajeNormalizado) -> None:
                 mensaje.texto or texto_extraido or "",
                 borrador,
             )
-            _responder(db, mensaje.telefono, respuesta, solicitud_id=solicitud_id)
+            if respuesta:
+                _responder(db, mensaje.telefono, respuesta, solicitud_id=solicitud_id)
             dedupe.marcar_procesado(
                 db,
                 registro,

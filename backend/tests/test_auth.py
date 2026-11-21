@@ -116,3 +116,30 @@ def test_token_expirado_invalido_y_ausente(client, db, telefono):
     respuesta_ausente = client.get("/api/auth/me")
     assert respuesta_ausente.status_code == 401
     assert respuesta_ausente.json()["detail"]["codigo"] == "NO_AUTENTICADO"
+
+
+def test_demo_login_solo_disponible_en_development(client, monkeypatch):
+    # En entorno test debe estar bloqueado por defecto
+    bloqueado = client.post("/api/auth/demo-login", json={"rol": "COORD_HUERTEROS"})
+    assert bloqueado.status_code == 403
+    assert bloqueado.json()["detail"]["codigo"] == "DEMO_NO_HABILITADO"
+
+    # En entorno development emite un JWT real para el rol solicitado
+    import app.routers.auth as auth_router
+    from dataclasses import replace
+
+    monkeypatch.setattr(
+        auth_router,
+        "settings",
+        replace(auth_router.settings, entorno="development"),
+    )
+    permitido = client.post("/api/auth/demo-login", json={"rol": "COORD_HUERTEROS"})
+    assert permitido.status_code == 200, permitido.text
+    cuerpo = permitido.json()
+    assert cuerpo["usuario"]["rol"] == "COORD_HUERTEROS"
+    me = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {cuerpo['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["rol"] == "COORD_HUERTEROS"

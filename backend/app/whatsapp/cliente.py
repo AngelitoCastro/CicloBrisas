@@ -18,9 +18,9 @@ def _destino(telefono: str) -> str:
     return f"whatsapp:{valor}"
 
 
-def _fallo() -> ErrorWhatsApp:
+def _fallo(exc: Exception) -> ErrorWhatsApp:
     return ErrorWhatsApp(
-        "WHATSAPP_ENVIO_FALLIDO",
+        f"TWILIO_{exc.code}" if isinstance(exc, TwilioRestException) and exc.code else "WHATSAPP_ENVIO_FALLIDO",
         "No fue posible entregar el mensaje de WhatsApp.",
     )
 
@@ -47,7 +47,7 @@ def enviar_texto(telefono: str, texto: str) -> str:
         return str(cliente.messages.create(**libre).sid)
     except (TwilioRestException, ValueError, TypeError) as exc:
         if not configuracion.content_sid:
-            raise _fallo() from exc
+            raise _fallo(exc) from exc
 
     plantilla: dict[str, object] = {
         **base,
@@ -65,7 +65,7 @@ def enviar_texto(telefono: str, texto: str) -> str:
     try:
         return str(cliente.messages.create(**plantilla).sid)
     except (TwilioRestException, ValueError, TypeError) as exc:
-        raise _fallo() from exc
+        raise _fallo(exc) from exc
 
 
 __all__ = ["enviar_texto"]

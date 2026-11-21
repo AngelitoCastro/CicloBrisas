@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import func, select
 from twilio.request_validator import RequestValidator
 
-from app.models import MensajeWhatsapp, Solicitud, Usuario
+from app.models import AvisoWhatsApp, MensajeWhatsapp, Solicitud, Usuario
 from app.schemas_whatsapp import ClasificacionIA, IntencionIA
 from app.whatsapp.errores import ProveedorNoDisponible
 from app.whatsapp.media import ArchivoMedia
@@ -36,12 +36,7 @@ def proveedores(monkeypatch, session_factory):
     monkeypatch.delenv("WEBHOOK_PUBLIC_URL", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-pruebas")
     monkeypatch.setattr("app.whatsapp.webhook_service.SessionLocal", session_factory)
-    monkeypatch.setattr("app.whatsapp.notificaciones.SessionLocal", session_factory)
     monkeypatch.setattr("app.whatsapp.webhook_service.enviar_texto", falso_enviar)
-    monkeypatch.setattr("app.whatsapp.notificaciones.enviar_texto", falso_enviar)
-    monkeypatch.setattr(
-        "app.whatsapp.notificaciones.redactar", lambda plantilla: plantilla
-    )
     monkeypatch.setattr("app.whatsapp.estado.redactar", lambda plantilla: plantilla)
     return enviados
 
@@ -455,13 +450,12 @@ def test_asignar_no_notifica_y_programar_notifica_una_vez(
     )
     assert programada.status_code == 200
     db.expire_all()
-    salientes = db.scalars(
-        select(MensajeWhatsapp).where(MensajeWhatsapp.direccion == "SALIENTE")
-    ).all()
-    assert len(salientes) == 1
-    assert huertero.nombre in salientes[0].contenido
-    assert creada["codigo_publico"] in salientes[0].contenido
-    assert "09:30" in salientes[0].contenido
+    avisos = db.scalars(select(AvisoWhatsApp)).all()
+    assert {a.destinatario for a in avisos} == {"SOLICITANTE", "RECOLECTOR"}
+    orden = next(a for a in avisos if a.destinatario == "RECOLECTOR")
+    assert orden.telefono == huertero.telefono
+    assert creada["codigo_publico"] in orden.contenido and "09:30" in orden.contenido
+
 
 
 def test_cierre_por_whatsapp_es_idempotente(
@@ -487,17 +481,11 @@ def test_cierre_por_whatsapp_es_idempotente(
         == 200
     )
 
-    cerrar = ClasificacionIA(
-        intencion=IntencionIA.CIERRE_RECOLECCION,
-        codigo_solicitud=creada["codigo_publico"],
-        peso_kg=Decimal("8.00"),
-        respuesta_usuario="Cierre listo.",
-    )
-    _ia_texto(monkeypatch, [cerrar, cerrar])
+    _ia_texto(monkeypatch, [])
     assert (
         _publicar(
             client,
-            [_texto("SMcierre1", telefono["HUERTERO"], "LISTO 8 kilos")],
+            [_texto("SMcierre1", telefono["HUERTERO"], f"LISTO {creada['codigo_publico']} 8")],
         ).status_code
         == 200
     )
@@ -509,7 +497,7 @@ def test_cierre_por_whatsapp_es_idempotente(
     assert (
         _publicar(
             client,
-            [_texto("SMcierre2", telefono["HUERTERO"], "LISTO 8 kilos")],
+            [_texto("SMcierre2", telefono["HUERTERO"], f"LISTO {creada['codigo_publico']} 8")],
         ).status_code
         == 200
     )
@@ -556,3 +544,47 @@ def test_salida_ia_invalida_y_proveedor_caido_no_crean_solicitud(
     assert fallido is not None
     assert fallido.error == "ProveedorNoDisponible"
     assert db.scalar(select(func.count()).select_from(Solicitud)) == 0
+
+
+def test_despacho_independiente_y_callback(client, db, login, proveedores, telefono, monkeypatch, session_factory):
+    from app.whatsapp.despacho import despachar_uno
+    from twilio.base.exceptions import TwilioRestException
+
+    hogar = login(telefono["HOGAR"])
+    coord = login(telefono["COORD_RECICLADORES"])
+    creada = client.post("/api/solicitudes", headers=hogar, json={
+        "flujo": "RECICLABLE", "disponibilidad_usuario": "Mañana"}).json()
+    ruta = f"/api/solicitudes/{creada['id']}"
+    persona = usuario_por_rol(db, "RECICLADOR", telefono["RECICLADOR"])
+    datos = {"recolector_id": str(persona.id), "fecha_programada": fecha_futura().isoformat(), "hora_programada": "09:30"}
+    for _ in range(2):
+        assert client.patch(ruta + "/programar", headers=coord, json=datos).status_code == 200
+
+    def proveedor(aviso, cfg):
+        if aviso.destinatario == "SOLICITANTE":
+            raise TwilioRestException(400, "/Messages", code=63016)
+        return "SMconfirmado"
+
+    monkeypatch.setattr("app.whatsapp.despacho.enviar", proveedor)
+    assert despachar_uno(session_factory) and despachar_uno(session_factory)
+    assert not despachar_uno(session_factory)
+    orden, fallo = db.scalars(select(AvisoWhatsApp).order_by(AvisoWhatsApp.id)).all()
+    assert (orden.estado, fallo.estado, fallo.error) == ("ACEPTADO", "FALLIDO", "63016")
+    callback = f"/api/webhooks/whatsapp/estado/{orden.intento}"
+    for estado in ("delivered", "sent", "delivered"):
+        campos = {"AccountSid": CUENTA, "MessageSid": "SMconfirmado", "MessageStatus": estado}
+        assert client.post(callback, data=campos).status_code == 403
+        firma = _firmar(campos, url="http://testserver" + callback)
+        assert client.post(callback, data=campos, headers={"X-Twilio-Signature": firma}).status_code == 204
+    assert client.get(ruta + "/avisos", headers=hogar).status_code == 403
+    estados = client.get(ruta + "/avisos", headers=coord).json()
+    assert {a["estado"] for a in estados} == {"ENTREGADO", "FALLIDO"}
+    retry = ruta + f"/avisos/{fallo.id}/reintentar"
+    assert client.post(retry, headers=coord).status_code == 202
+    assert client.post(retry, headers=coord).status_code == 409
+    def timeout(aviso, cfg):
+        raise TimeoutError()
+    monkeypatch.setattr("app.whatsapp.despacho.enviar", timeout)
+    assert despachar_uno(session_factory)
+    assert not despachar_uno(session_factory)
+    assert client.post(retry, headers=coord).status_code == 409

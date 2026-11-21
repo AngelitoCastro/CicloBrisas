@@ -36,6 +36,7 @@ EstadoSolicitud = Literal[
     "CANCELADA",
 ]
 TipoGenerador = Literal["HOGAR", "UNIDAD_PRODUCTIVA"]
+CategoriaContenido = Literal["ORGANICO", "RECICLABLE", "HUERTA", "RUTAS"]
 
 DecimalSalida = Annotated[
     Decimal,
@@ -108,6 +109,10 @@ class TokenResponse(BaseModel):
     usuario: UsuarioResponse
 
 
+class DemoLoginRequest(BaseModel):
+    rol: RolUsuario
+
+
 class UsuarioResumen(ModeloSalida):
     id: UUID
     nombre: str
@@ -118,6 +123,25 @@ class ContactoSolicitante(UsuarioResumen):
     telefono: str | None = None
     direccion: str | None = None
     sector_manzana: str | None = None
+    es_piloto: bool = False
+
+
+class RecolectorCatalogoResponse(ModeloSalida):
+    id: UUID
+    nombre: str
+    rol: Literal["HUERTERO", "RECICLADOR"]
+    telefono: str
+    activo: bool
+
+
+class ContenidoEducativoResponse(ModeloSalida):
+    id: int
+    titulo: str
+    categoria: CategoriaContenido
+    resumen: str
+    que_si_va: str | None
+    que_no_va: str | None
+    orden: int
 
 
 class UsuarioListResponse(BaseModel):
@@ -434,9 +458,12 @@ __all__ = [
     "AsignarSolicitud",
     "CalculoPuntosResponse",
     "CancelarSolicitud",
+    "CategoriaContenido",
     "CerrarSolicitud",
     "CierreSolicitudResponse",
     "ContactoSolicitante",
+    "ContenidoEducativoResponse",
+    "DemoLoginRequest",
     "ErrorDetalle",
     "ErrorRespuesta",
     "EstadoSolicitud",
@@ -446,6 +473,7 @@ __all__ = [
     "LoginRequest",
     "PilotoUpdate",
     "ProgramarSolicitud",
+    "RecolectorCatalogoResponse",
     "ReglaPuntosActualizar",
     "ReglaPuntosCrear",
     "ReglaPuntosResponse",

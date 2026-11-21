@@ -11,6 +11,14 @@ from app.models import Usuario
 from app.services.errors import NoEncontrado, PermisoDenegado, Validacion
 
 ROLES_EXTERNOS = frozenset({"HOGAR", "UNIDAD_PRODUCTIVA"})
+ROL_RECOLECTOR_POR_FLUJO: dict[str, str] = {
+    "ORGANICO": "HUERTERO",
+    "RECICLABLE": "RECICLADOR",
+}
+FLUJO_POR_COORDINADOR: dict[str, str] = {
+    "COORD_HUERTEROS": "ORGANICO",
+    "COORD_RECICLADORES": "RECICLABLE",
+}
 
 
 def _verificar_admin(usuario: Usuario) -> None:
@@ -98,8 +106,50 @@ def cambiar_modo_piloto(
     return usuario
 
 
+def listar_recolectores_activos(
+    db: Session,
+    usuario: Usuario,
+    *,
+    flujo: str | None = None,
+) -> list[Usuario]:
+    """Lista recolectores activos permitidos para coordinadores y administración.
+
+    Respeta la separación de flujos (RN-01): un coordinador solo consulta los
+    recolectores de su colectivo; solicitar el otro flujo responde 403.
+    """
+    if usuario.rol in FLUJO_POR_COORDINADOR:
+        flujo_propio = FLUJO_POR_COORDINADOR[usuario.rol]
+        if flujo is not None and flujo != flujo_propio:
+            raise PermisoDenegado(
+                f"Tu coordinación solo puede consultar recolectores del flujo {flujo_propio}.",
+                codigo="FLUJO_NO_AUTORIZADO",
+            )
+        roles = [ROL_RECOLECTOR_POR_FLUJO[flujo_propio]]
+    elif usuario.rol == "ADMIN":
+        if flujo is not None:
+            roles = [ROL_RECOLECTOR_POR_FLUJO[flujo]]
+        else:
+            roles = ["HUERTERO", "RECICLADOR"]
+    else:
+        raise PermisoDenegado(
+            "Solo coordinadores y administradores pueden consultar el catálogo de recolectores.",
+            codigo="ROL_NO_AUTORIZADO",
+        )
+
+    return list(
+        db.scalars(
+            select(Usuario)
+            .where(Usuario.activo.is_(True), Usuario.rol.in_(roles))
+            .order_by(Usuario.rol.asc(), Usuario.nombre.asc())
+        ).all()
+    )
+
+
 __all__ = [
+    "FLUJO_POR_COORDINADOR",
     "ROLES_EXTERNOS",
+    "ROL_RECOLECTOR_POR_FLUJO",
     "cambiar_modo_piloto",
+    "listar_recolectores_activos",
     "listar_usuarios_admin",
 ]

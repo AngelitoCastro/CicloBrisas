@@ -8,6 +8,8 @@ from fastapi import APIRouter, Header, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
+from app.security import SesionDB
+from app.whatsapp.despacho import ESTADOS, actualizar
 from app.schemas_whatsapp import PayloadTwilio, es_callback_estado
 from app.services.errors import Validacion
 from app.whatsapp.config import obtener_config
@@ -73,3 +75,18 @@ async def recibir_webhook(
 
 
 __all__ = ["router"]
+
+
+@router.post("/whatsapp/estado/{intento}")
+async def estado_aviso(intento: str, request: Request, db: SesionDB) -> Response:
+    parametros = {k: str(v) for k, v in (await request.form()).items()}
+    cfg = obtener_config()
+    url = f"{cfg.webhook_public_url}/estado/{intento}" if cfg.webhook_public_url else str(request.url)
+    verificar_firma_twilio({url}, parametros, request.headers.get("X-Twilio-Signature"), cfg.auth_token)
+    if not cfg.account_sid or parametros.get("AccountSid") != cfg.account_sid:
+        raise CuentaTwilioInvalida()
+    estado = ESTADOS.get(parametros.get("MessageStatus", ""))
+    sid = parametros.get("MessageSid")
+    if estado and sid:
+        actualizar(db, intento, sid, estado, parametros.get("ErrorCode"))
+    return Response(status_code=204)
