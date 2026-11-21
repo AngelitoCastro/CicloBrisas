@@ -33,7 +33,7 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
         return request ? requestView(request.status) : 'pending'
     })
     const [selection, setSelection] = useState('')
-    const [source, setSource] = useState<Request['source'] | null>(null)
+    const [creatingRequest, setCreatingRequest] = useState(false)
     const [reschedule, setReschedule] = useState(false)
     const [search, setSearch] = useState('')
     const [generator, setGenerator] = useState('')
@@ -102,8 +102,9 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
                 <span className="line"><CalendarDays size={16} aria-hidden="true" />
                     {new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', timeZone: 'America/Bogota' }).format(new Date())}
                 </span>
-                {!linkedDemo && <><button className="btn" onClick={() => setSource('Manual')}><Plus size={18} /> Nueva solicitud</button>
-                <button className="btn" onClick={() => setSource('WhatsApp')}><MessageCircle size={18} /> Simular solicitud por WhatsApp</button></>}
+                {!linkedDemo && <button className="btn" onClick={() => setCreatingRequest(true)}>
+                    <Plus size={18} aria-hidden="true" /> Nueva solicitud
+                </button>}
             </div>
         </div>
         <div className="stat-grid collection-stages" role="group" aria-label="Etapas de recolección">
@@ -209,9 +210,9 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
         {view === 'records' && selected && <Modal title={requestAction[selected.status] + ' · ' + selected.id} onClose={clearSelection}>
             <Detail key={selected.id + selected.status} r={selected} data={data} update={onUpdate} notify={notify} />
         </Modal>}
-        {source && <NewRequest flow={flow} source={source} onClose={() => setSource(null)} onSave={request => {
+        {creatingRequest && <NewRequest flow={flow} onClose={() => setCreatingRequest(false)} onSave={request => {
             update(request)
-            setSource(null)
+            setCreatingRequest(false)
             selectView('pending')
             setSelection(request.id)
             setSearch('')
@@ -468,7 +469,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
                         <small>{data.requests.filter(q => q.assignee === m.id && q.date === date && q.status === 'programada').length} asignadas ese día</small>
                     </button>)}
                 </div>
-                {!members.length && <p className="error">No hay miembros activos. Agrega uno en Equipo.</p>}
+                {!members.length && <p className="error">No hay miembros activos. Pide a Administración que actualice el equipo.</p>}
             </div>
             <div>
                 <div className="step"><b>2</b><h3>¿Cuándo va?</h3></div>

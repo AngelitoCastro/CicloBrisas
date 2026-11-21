@@ -78,7 +78,7 @@ export default function RecordsPanel({ data, onSave, notify }: Props) {
               <span className="intake-person"><UserRound size={30}/></span><strong>{m.name}</strong><small>{m.group}</small>{memberId===m.id&&<CheckCircle2 className="intake-check" size={21}/>}
             </button>)}
           </div>
-          {!members.length && <p className="note mt-3">No hay recicladores activos. Agrega uno desde Equipo.</p>}
+          {!members.length && <p className="note mt-3">No hay recicladores activos. Pide a Administración que actualice el equipo.</p>}
         </div>
         {member && <>
           <div className="intake-details">

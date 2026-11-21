@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Leaf, Recycle, Save } from 'lucide-react'
-import { type EcoPointRules, type Flow, type Generator } from '../types'
+import RecyclingRates from '../components/RecyclingRates'
+import { type Data, type EcoPointRules, type Flow, type Generator } from '../types'
 import { isValidPointAmount, maxPointRuleValue, pointRuleFields, pointRuleFlows, pointRuleGenerators } from '../services/pointRules'
 
 const flows = {
@@ -13,9 +14,11 @@ const fieldLabels = { base: 'Puntos base', perKg: 'Puntos por kg' }
 type Props = {
     rules: EcoPointRules
     save: (rules: EcoPointRules) => boolean
+    rates: Data['rates']
+    saveRates: (rates: Data['rates']) => void
 }
 
-export default function PointRulesPage({ rules, save }: Props) {
+export default function PointRulesPage({ rules, save, rates, saveRates }: Props) {
     const [feedback, setFeedback] = useState('')
     const [failed, setFailed] = useState(false)
 
@@ -44,7 +47,7 @@ export default function PointRulesPage({ rules, save }: Props) {
 
     return <section aria-labelledby="point-rules-title">
         <h1 id="point-rules-title">Reglas de EcoPuntos</h1>
-        <p className="muted mt-1 mb-4">Configura los puntos base por solicitud y los puntos por kilo para cada flujo y tipo de generador.</p>
+        <p className="muted mt-1 mb-4">Configura los EcoPuntos del habitante por flujo y tipo de solicitante. En esta misma sección puedes ajustar las tarifas en COP para el reciclador.</p>
         <form className="space-y-4" onSubmit={submit} onChange={() => setFeedback('')}>
             <div className="grid gap-4 lg:grid-cols-2">
                 {pointRuleFlows.map(flow => {
@@ -76,6 +79,7 @@ export default function PointRulesPage({ rules, save }: Props) {
                 <p className={failed ? 'error' : 'muted'} role="status">{feedback}</p>
             </div>
         </form>
+        <div className="mt-5"><RecyclingRates rates={rates} save={saveRates} /></div>
     </section>
 }
 

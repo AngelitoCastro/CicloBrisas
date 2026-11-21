@@ -23,9 +23,11 @@ Desde la pantalla de acceso, **Ver recorrido por WhatsApp** abre una demostraci�
 
 - Coordinador de Huerta: orgánicos, autorización, recolección/entrega directa, donaciones, equipo, mensajes, pesaje, horarios e historial.
 - Coordinador de Reciclaje: aprovechables, autorización, asignación, pesaje por material, valor para el reciclador, equipo, mensajes, horarios y registro de recepción física de materiales.
-- Administrador: resumen general, filtros, exportación CSV, equipo, horarios, tarifas, base de conocimiento y mensajes.
+- Administrador: resumen general, filtros, exportación CSV, equipo, reglas de EcoPuntos, tarifas y base de conocimiento.
 
 El selector de perfil es una demostración, NO un inicio de sesión seguro. Los usuarios externos no tienen panel. Los grupos del equipo son etiquetas de organización; la separación real por coordinador/grupo queda para Supabase.
+
+En **Equipo**, los coordinadores consultan los miembros de su actividad. Administración puede agregar, editar, activar y desactivar miembros de ambos equipos.
 
 ## Probar el flujo
 
@@ -33,8 +35,8 @@ El selector de perfil es una demostración, NO un inicio de sesión seguro. Los 
 2. Revisa la descripción/foto, solicita más información si corresponde, corrige la categoría o autoriza. Se puede rechazar con motivo.
 3. Una vez autorizada, selecciona responsable, fecha permitida y franja configurada. Añade una nota. Programa y avisa por WhatsApp (simulado). Para entrega directa se asigna quien recibe.
 4. En **Programadas**, la ficha indica que se espera la confirmación del responsable. En la demo puedes simular su mensaje con `LISTO <código> <cantidad>`. Si usas el cierre manual de respaldo, registra la cantidad y el motivo. En Reciclaje, el peso total permite cerrar y calcular EcoPuntos. Completa el desglose en **Recolectadas** para calcular el valor en COP.
-5. Consulta los avisos en el seguimiento de la solicitud. La bandeja general de mensajes se encuentra en Administración. Puedes simular entradas a partir de un formulario (no procesa mensajes reales ni clasifica por IA).
-6. En Configuración cambia los días y franjas, y las tarifas de reciclaje. Cada registro final conserva su tarifa aplicada. Los horarios de ejemplo no representan acuerdos definitivos.
+5. Consulta los avisos en el seguimiento de cada solicitud. Para simular una solicitud de WhatsApp, usa el recorrido de demostración desde la pantalla de acceso.
+6. En **Métricas**, cada coordinador gestiona sus días y franjas y consulta los EcoPuntos por kilo para hogares y unidades productivas. En Reciclaje también se muestran las tarifas vigentes en COP. Administración edita las reglas de puntos y las tarifas de reciclaje en **Reglas de EcoPuntos**. Cada registro final conserva la tarifa aplicada. Los horarios de ejemplo no representan acuerdos definitivos.
 
 En Reciclaje, abre **Registros de materiales** para registrar una recepción independiente. Selecciona un reciclador, registra el peso por material y añade pacas, proveedor o tiquete si corresponde. El historial conserva el peso y las tarifas aplicadas al guardar.
 

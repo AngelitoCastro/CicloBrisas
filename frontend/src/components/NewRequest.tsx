@@ -6,10 +6,9 @@ type Props = {
     flow: Flow
     onClose: () => void
     onSave: (request: Request) => void
-    source?: Request['source']
 }
 
-export default function NewRequest({ flow, onClose, onSave, source = 'Manual' }: Props) {
+export default function NewRequest({ flow, onClose, onSave }: Props) {
     const [kind, setKind] = useState<Request['kind']>('residuo')
     const [generator, setGenerator] = useState<Request['generator']>('Hogar')
     const [delivery, setDelivery] = useState<Request['delivery']>('recoger')
@@ -45,11 +44,9 @@ export default function NewRequest({ flow, onClose, onSave, source = 'Manual' }:
             preference: get('preference'),
             note: get('note'),
             status: 'pendiente',
-            source,
+            source: 'Manual',
             created: isoDate(),
-            history: [
-                source === 'Manual' ? 'Solicitud registrada manualmente por el coordinador' : 'Solicitud recibida por WhatsApp (simulada)',
-            ],
+            history: ['Solicitud registrada manualmente por el coordinador'],
         })
     }
 
@@ -72,7 +69,7 @@ export default function NewRequest({ flow, onClose, onSave, source = 'Manual' }:
     }
 
     return <Modal
-        title={source === 'Manual' ? 'Nueva solicitud manual' : 'Simular solicitud entrante de WhatsApp'}
+        title="Nueva solicitud manual"
         onClose={onClose}
     >
         <form
