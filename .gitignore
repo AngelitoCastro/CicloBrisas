@@ -1,4 +1,4 @@
-# Python
+# Python / Backend
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,6 +8,11 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+
+# Node / Frontend (Vite)
+node_modules/
+dist/
+*.log
 
 # Environment & secrets
 .env
