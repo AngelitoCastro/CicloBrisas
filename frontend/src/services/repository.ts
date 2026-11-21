@@ -1,5 +1,6 @@
 import { initialData } from './demo'
 import type { Data } from '../types'
+import { loadPointRules } from './pointRules'
 
 // Único punto de persistencia del prototipo. Sustituir por Supabase con RLS.
 // Conservamos la clave de V2 para no perder las solicitudes ni la configuración.
@@ -10,7 +11,11 @@ export const repository = {
       const raw = localStorage.getItem(KEY)
       if (!raw) return structuredClone(initialData)
       const previous = JSON.parse(raw) as Data
-      return { ...previous, intakeRecords: Array.isArray(previous.intakeRecords) ? previous.intakeRecords : [] }
+      return {
+        ...previous,
+        intakeRecords: Array.isArray(previous.intakeRecords) ? previous.intakeRecords : [],
+        pointRules: loadPointRules(previous.pointRules),
+      }
     } catch {
       return structuredClone(initialData)
     }
