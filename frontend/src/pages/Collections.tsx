@@ -19,7 +19,6 @@ type Props = {
     ) => void | Promise<boolean>
     notify: (text: string) => void
     onSaveRecord: (record: IntakeRecord) => void
-    linkedDemo?: boolean
     backendConnected?: boolean
     onRefresh?: () => Promise<void> | void
 }
@@ -47,14 +46,10 @@ export default function Collections({
     update,
     notify,
     onSaveRecord,
-    linkedDemo = false,
     backendConnected = false,
     onRefresh,
 }: Props) {
-    const [view, setView] = useState<View>(() => {
-        const request = linkedDemo ? data.requests.find(item => item.flow === flow) : undefined
-        return request ? requestView(request.status) : 'pending'
-    })
+    const [view, setView] = useState<View>('pending')
     const [selection, setSelection] = useState('')
     const [creatingRequest, setCreatingRequest] = useState(false)
     const [reschedule, setReschedule] = useState(false)
@@ -132,12 +127,10 @@ export default function Collections({
     return <div className="collections">
         <div className="flex flex-wrap justify-between items-end gap-3 mb-5">
             <div>
-                {linkedDemo ? <h2>Panel de recolecciones · {recycling ? 'Reciclaje' : 'Huerta'}</h2> : <h1>Panel de recolecciones</h1>}
-                <p className="muted mt-1">{linkedDemo && own.length === 0
-                    ? 'Envía una solicitud desde la vista Habitante para verla en Por programar.'
-                    : backendConnected
-                        ? 'Revisa las solicitudes entrantes de WhatsApp o portal, ajusta los datos y programa al recolector.'
-                        : 'Elige una solicitud y organiza su recolección en tres pasos.'}</p>
+                <h1>Panel de recolecciones</h1>
+                <p className="muted mt-1">{backendConnected
+                    ? 'Revisa las solicitudes entrantes de WhatsApp o portal, ajusta los datos y programa al recolector.'
+                    : 'Elige una solicitud y organiza su recolección en tres pasos.'}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 <span className="line"><CalendarDays size={16} aria-hidden="true" />
@@ -146,7 +139,7 @@ export default function Collections({
                 {onRefresh && <button className="btn" type="button" disabled={refreshing} onClick={handleRefresh}>
                     <RefreshCw size={16} aria-hidden="true" /> {refreshing ? 'Actualizando…' : 'Actualizar'}
                 </button>}
-                {!linkedDemo && !backendConnected && <button className="btn" onClick={() => setCreatingRequest(true)}>
+                {!backendConnected && <button className="btn" onClick={() => setCreatingRequest(true)}>
                     <Plus size={18} aria-hidden="true" /> Nueva solicitud
                 </button>}
             </div>
@@ -168,7 +161,7 @@ export default function Collections({
                 <ClipboardList size={18} aria-hidden="true" /> Volver a recolecciones
             </button>
         </div>}
-        {!linkedDemo && recycling && <div hidden={view !== 'records'}><RecordsPanel data={data} onSave={onSaveRecord} notify={notify} /></div>}
+        {recycling && <div hidden={view !== 'records'}><RecordsPanel data={data} onSave={onSaveRecord} notify={notify} /></div>}
         {!recycling && view === 'records' && <section className="panel" aria-labelledby="organic-records-title">
             <header className="panel-head">
                 <Scale aria-hidden="true" size={26} /><h2 id="organic-records-title">Registro de materiales recibidos</h2>
@@ -198,9 +191,9 @@ export default function Collections({
                     ))}
                 </div>
                 <div className="collection-tools">
-                    {!linkedDemo && <button className="btn pill" onClick={() => selectView('records')}>
+                    <button className="btn pill" onClick={() => selectView('records')}>
                         <Scale size={16} aria-hidden="true" /> Registros de materiales
-                    </button>}
+                    </button>
                     <button className="btn pill" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
                         <Search size={16} aria-hidden="true" /> Buscar y filtrar
                     </button>
@@ -251,7 +244,6 @@ export default function Collections({
                             update={onUpdate}
                             notify={notify}
                             reschedule={reschedule}
-                            linkedDemo={linkedDemo}
                             avisosRefresh={avisosRefresh}
                             onRescheduled={() => setReschedule(false)}
                         />
@@ -337,7 +329,6 @@ function Detail({
     notify,
     reschedule = false,
     onRescheduled,
-    linkedDemo = false,
     avisosRefresh = 0,
 }: {
     r: Request
@@ -346,7 +337,6 @@ function Detail({
     notify: Props['notify']
     reschedule?: boolean
     onRescheduled?: () => void
-    linkedDemo?: boolean
     avisosRefresh?: number
 }) {
     const members = data.members.filter(member => member.flow === r.flow && member.active)
@@ -629,7 +619,7 @@ function Detail({
                         ))
                         notify('Solicitud de evidencia simulada.')
                     }}><MessageCircle size={17} aria-hidden="true" /> Solicitar foto o más información</button>
-                    {!linkedDemo && r.kind === 'residuo' && <button className="btn" aria-expanded={rerouting}
+                    {r.kind === 'residuo' && <button className="btn" aria-expanded={rerouting}
                         onClick={() => setRerouting(!rerouting)}>Cambiar categoría</button>}
                     {rerouting && <div className="note space-y-2">
                         <p>La solicitud {r.id} pasará a Por programar del panel de {destination}.</p>
@@ -777,9 +767,8 @@ function Detail({
                 </div>
                 <p>El responsable puede confirmar con <strong>{replyExample}</strong> o puedes registrar el cierre manual de respaldo.</p>
             </div>
-            {linkedDemo && <p className="muted">Envía la confirmación desde la vista Recolector.</p>}
             <div className="flex flex-wrap gap-2">
-                {!linkedDemo && !r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
+                {!r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
                     onClick={() => chooseClosure('whatsapp-demo')}><MessageCircle size={18} aria-hidden="true" /> Simular respuesta</button>}
                 <button className="btn" aria-expanded={closureMode === 'manual'}
                     onClick={() => chooseClosure('manual')}><Scale size={18} aria-hidden="true" /> Cierre manual de respaldo</button>

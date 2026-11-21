@@ -5,7 +5,6 @@ import {
   Shield,
   ClipboardList,
   Users,
-  MessageCircle,
   History,
   Settings,
   BookOpen,
@@ -463,9 +462,6 @@ export default function App() {
               </div>
             )}
 
-            <a className="btn w-full mt-5" href="?vista=whatsapp">
-              <MessageCircle size={18} aria-hidden="true" /> Ver recorrido guiado
-            </a>
             <div className="mt-5 border-t border-[#d9e1d7] pt-4">
               <InstitutionalLogos />
             </div>
