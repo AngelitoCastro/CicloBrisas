@@ -1,6 +1,8 @@
+import { loadPointRules } from './pointRules'
 import { type Data, type Request, type Flow, isoDate } from '../types'
 const base = (id: string, flow: Flow, name: string, description: string, estKg: number, generator: 'Hogar' | 'Comercio' = 'Hogar'): Request => ({ id, flow, name, description, estKg, generator, pilot: generator === 'Comercio', phone: '30055501' + id.slice(-2), address: generator === 'Comercio' ? 'Manzana 12, local 2' : 'Manzana 8, casa 3', kind: 'residuo', units: 0, evidence: '', delivery: 'recoger', preference: 'Mañana', status: 'pendiente', source: 'WhatsApp', created: isoDate(), history: ['Solicitud recibida por WhatsApp'] })
 export const initialData: Data = {
+    pointRules: loadPointRules(),
     intakeRecords: [],
     requests: [
         base('EC-1043', 'organico', 'Frutería La Cosecha', 'Cáscaras de fruta', 18, 'Comercio'), base('EC-1044', 'organico', 'María del Carmen Pérez', 'Restos de verduras', 4), { ...base('EC-1045', 'organico', 'Comedor Sabor Caribe', 'Hojas de plátano', 12, 'Comercio'), delivery: 'entrega' }, base('EC-1046', 'organico', 'Luis Enrique García', 'Restos de poda', 7), { ...base('EC-1047', 'organico', 'Ana Rodríguez', 'Baldes para la huerta', 0), kind: 'donacion', units: 2, delivery: 'entrega' },

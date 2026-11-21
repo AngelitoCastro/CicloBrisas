@@ -3,13 +3,21 @@ import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { X, CheckCircle2, Clock, CalendarDays, CheckCheck, UserCheck, CircleX, MessageCircle } from 'lucide-react'
 import { statuses, type Status } from '../types'
 
-const logos = import.meta.glob<string>('../assets/logo-ecoconecta.{svg,png}', {
-    eager: true, query: '?url', import: 'default',
-})
-const logo = Object.values(logos)[0]
+import ecoConectaLogo from '../assets/logo-ecoconecta.png'
+import villasLogo from '../assets/logo-villas-de-san-pablo.png'
+import fundacionLogo from '../assets/logo-fundacion-santo-domingo.png'
 
 export function Brand() {
-    return <div className="brand">{logo ? <img src={logo} alt="EcoConecta" /> : <strong>EcoConecta</strong>}</div>
+    return <div className="brand">
+        <img src={ecoConectaLogo} alt="EcoConecta Villas de San Pablo" width={2172} height={724} />
+    </div>
+}
+
+export function InstitutionalLogos() {
+    return <ul className="institutional-logos" aria-label="Identidad institucional">
+        <li><img src={villasLogo} alt="Villas de San Pablo · Megabarrio Barranquilla" width={467} height={169} /></li>
+        <li><img src={fundacionLogo} alt="Fundación Santo Domingo" width={586} height={317} /></li>
+    </ul>
 }
 
 const stateIcons = {

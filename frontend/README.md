@@ -1,6 +1,6 @@
 # EcoConecta — frontend v2
 
-Gestión comunitaria de residuos para Brisas de San Pablo. Rediseño del proyecto original en React 19 + TypeScript + Tailwind CSS 4 + Vite. Iconos Lucide. Las imágenes de referencia se emplearon como guía de composición y color, no como fondos. No modifica el ZIP original.
+Gestión comunitaria de residuos para Villas de San Pablo. Rediseño del proyecto original en React 19 + TypeScript + Tailwind CSS 4 + Vite. Iconos Lucide. Las imágenes de referencia se emplearon como guía de composición y color, no como fondos. No modifica el ZIP original.
 
 ## Ejecutar en Windows / VS Code
 
@@ -15,6 +15,8 @@ npm run dev
 
 Abrir la URL que muestre Vite (normalmente `http://localhost:5173`). Para comprobar tipos y compilar: `npm run build`.
 
+Desde la pantalla de acceso, **Ver recorrido por WhatsApp** abre una demostración con datos ficticios. Elige Huerta o Reciclaje. Como **Habitante**, solicita la recolección. Como **Coordinador**, apruébala y programa la visita. En **Recolector**, envía la respuesta simulada con el código y peso. Vuelve a **Habitante** para ver el cierre y consultar el saldo. La demo comparte la solicitud entre vistas y guarda su progreso por separado durante la sesión del navegador.
+
 ## Perfiles de demostración
 
 - Coordinador de Huerta: orgánicos, autorización, recolección/entrega directa, donaciones, equipo, mensajes, pesaje, horarios e historial.
@@ -25,11 +27,11 @@ El selector de perfil es una demostración, NO un inicio de sesión seguro. Los 
 
 ## Probar el flujo
 
-1. Selecciona un coordinador y abre una solicitud recibida. En Huerta, usa la tabla y sus filtros de estado, generador y fecha.
+1. En cualquiera de los dos perfiles, selecciona una tarjeta en **Por programar**. La ficha se muestra junto a la lista en pantallas amplias y debajo en móvil. Puedes filtrar por generador y usar **Buscar y filtrar** para acotar la búsqueda.
 2. Revisa la descripción/foto, solicita más información si corresponde, corrige la categoría o autoriza. Se puede rechazar con motivo.
 3. Una vez autorizada, selecciona responsable, fecha permitida y franja configurada. Añade una nota. Programa y avisa por WhatsApp (simulado). Para entrega directa se asigna quien recibe.
-4. En una solicitud programada, elige **Registrar cierre** y registra el peso realmente aceptado por material o unidades de donación. Anota lo rechazado. Finaliza. El cálculo de reciclaje se acredita como valor para el reciclador, no para el habitante.
-5. Consulta historial, mensajes y reportes. Puedes simular entradas a partir de un formulario (no procesa mensajes reales ni clasifica por IA).
+4. En **Programadas**, la ficha indica que se espera la confirmación del responsable. En la demo puedes simular su mensaje con `LISTO <código> <cantidad>`. Si usas el cierre manual de respaldo, registra la cantidad y el motivo. En Reciclaje, el peso total permite cerrar y calcular EcoPuntos. Completa el desglose en **Recolectadas** para calcular el valor en COP.
+5. Consulta los avisos en el seguimiento de la solicitud. La bandeja general de mensajes se encuentra en Administración. Puedes simular entradas a partir de un formulario (no procesa mensajes reales ni clasifica por IA).
 6. En Configuración cambia los días y franjas, y las tarifas de reciclaje. Cada registro final conserva su tarifa aplicada. Los horarios de ejemplo no representan acuerdos definitivos.
 
 En Reciclaje, abre **Registros de materiales** para registrar una recepción independiente. Selecciona un reciclador, registra el peso por material y añade pacas, proveedor o tiquete si corresponde. El historial conserva el peso y las tarifas aplicadas al guardar.
@@ -38,12 +40,11 @@ Las modificaciones se guardan en localStorage del navegador. Para reiniciar la d
 
 ## Decisiones de alcance
 
-- En la demostración, los cierres orgánicos con peso aceptado registran 10 EcoPuntos base más 5 por kg. Los reportes y el CSV incluyen el resultado guardado. Cálculo parametrizable sujeto a validación FSD.
+- En **Administración → Reglas de EcoPuntos** se guardan los valores de demostración por flujo y tipo de generador. La configuración se conserva en el navegador. Los cierres de Huerta y Reciclaje con peso aceptado guardan los EcoPuntos de demostración y la regla aplicada. Consulta el resultado en la ficha de **Recolectadas**. En Reciclaje, el valor en COP para el reciclador se muestra por separado. Cálculo parametrizable sujeto a validación FSD.
 - No se implementan tarifas multiusuarios; los $80 COP/kg son un valor inicial editable por material, destinado al reciclador.
 - Lunes, miércoles y viernes son días iniciales de ejemplo; las franjas son independientes, editables por categoría y no afectan asignaciones anteriores.
 - Los materiales declarados se revisan antes de asignar; la aceptación definitiva se registra tras la clasificación física. No se automatiza la decisión de aceptar residuos.
-- Se conserva «Brisas de San Pablo» de las notas; la referencia visual indica «Villas de San Pablo». Confirmar nombre oficial antes del despliegue.
-- Para incorporar la marca oficial, colocar `logo-ecoconecta.svg` o `logo-ecoconecta.png` en `src/assets/`. El prototipo muestra el nombre EcoConecta cuando falta el archivo.
+- Los PNG proporcionados están en `src/assets/`. EcoConecta es la marca principal sobre fondo blanco. Villas de San Pablo y Fundación Santo Domingo aparecen en el acceso y en el pie de los paneles.
 
 ## Estructura
 
