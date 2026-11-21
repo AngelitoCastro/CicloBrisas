@@ -7,7 +7,6 @@ type ClosureInput = {
     confirmed?: boolean
     reason?: string
     now?: Date
-    notifyCollector?: boolean
 }
 
 type Notice = { name: string; phone: string; text: string }
@@ -69,12 +68,6 @@ export function closeCollection(data: Data, request: Request, input: ClosureInpu
         'Cierre manual · ' + result + ' · Motivo: ' + reason]
     if (formattedPoints !== undefined) history.push('EcoPuntos de demostración para el habitante: ' + formattedPoints)
     const notifications = [{ name: r.name, phone: r.phone, text: receipt }]
-    if (simulated && assigned && input.notifyCollector) {
-        notifications.push({
-            name: assigned.name, phone: assigned.phone,
-            text: 'Registramos tu confirmación para la solicitud ' + r.id + '. ' + result + '.',
-        })
-    }
 
     return {
         ok: true,
