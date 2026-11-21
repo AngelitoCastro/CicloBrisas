@@ -1,11 +1,11 @@
 ---
 name: ecoconecta-whatsapp-ia
-description: Implementar o revisar la integración de WhatsApp Cloud API y el asistente de IA de EcoConecta, incluyendo webhook, privacidad, notificaciones y cierres desde campo.
+description: Implementar o revisar la integración de WhatsApp con Twilio y el asistente OpenAI de EcoConecta, incluyendo webhook, privacidad, notificaciones y cierres desde campo.
 ---
 
 # WhatsApp e IA de EcoConecta
 
-Leer [la arquitectura propuesta](../../../arquitectura_de_ia_y_flujo_bidireccional_whatsapp.md) y el servicio de solicitudes existente. Confirmar en documentación oficial las versiones de Graph API, modelos disponibles y requisitos de plantillas antes de integrar; no asumir vigentes las versiones de los documentos iniciales.
+Leer [la arquitectura propuesta](../../../arquitectura_de_ia_y_flujo_bidireccional_whatsapp.md) y el servicio de solicitudes existente. La implementación usa Twilio WhatsApp y OpenAI: confirmar en documentación oficial la validación de `X-Twilio-Signature`, los modelos disponibles y los requisitos de Content SID antes de integrar; no asumir vigentes las decisiones de los documentos iniciales.
 
 ## Límites operativos
 
@@ -16,9 +16,9 @@ Leer [la arquitectura propuesta](../../../arquitectura_de_ia_y_flujo_bidireccion
 
 ## Mensajería y privacidad
 
-Implementar tanto el desafío de verificación como la validación de firma del webhook usando el cuerpo original y el secreto correspondiente. Distinguir mensajes entrantes de eventos de entrega. Deduplicar por identificador del proveedor con persistencia y estrategia de reintento para fallos parciales.
+Validar `X-Twilio-Signature` contra la URL exacta y todos los parámetros del formulario con `RequestValidator`, y comprobar `AccountSid`. Usar `WEBHOOK_PUBLIC_URL` o reconstruir la URL pública con `X-Forwarded-Proto`/`X-Forwarded-Host` detrás de proxy; no fiarse de `request.url` en túneles. No existe desafío GET de Meta. Distinguir mensajes entrantes de callbacks de estado. Deduplicar por `MessageSid` con persistencia y estrategia de reintento para fallos parciales.
 
-Comprobar consentimiento y elegibilidad del envío, ventana de conversación y plantillas cuando corresponda. Registrar por separado operación guardada y entrega de notificación para poder reintentar sin duplicar efectos.
+Comprobar consentimiento y elegibilidad del envío, ventana de conversación y Content SID cuando corresponda. Registrar por separado operación guardada y entrega de notificación para poder reintentar sin duplicar efectos.
 
 Anonimizar nombres, teléfonos y direcciones antes de consultar al proveedor de IA; los mensajes libres también pueden incluirlos. Evitar que logs y errores expongan esos datos. No comunicar éxito al usuario antes de que el backend confirme la operación. Acordar acceso y conservación del historial.
 

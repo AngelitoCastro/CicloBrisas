@@ -2,7 +2,7 @@
 
 Documentación del MVP comunitario para coordinar la recolección de residuos orgánicos y reciclables en Villas de San Pablo, Barranquilla.
 
-**Estado del repositorio:** contiene especificaciones y un plan de desarrollo. Todavía no incluye la aplicación, archivos Docker, plantilla `.env.example` ni datos semilla. Las reglas y los comandos de ejecución descritos en los documentos son objetivos de implementación; no acreditan funcionalidades construidas o probadas.
+**Estado del repositorio:** incluye el backend FastAPI con autenticación, solicitudes, programación, historial, cierre transaccional con puntos, administración de reglas y piloto, persistencia PostgreSQL local o en Supabase con migraciones, datos semilla, Docker e integración WhatsApp/IA con Twilio, OpenAI o Azure OpenAI. También incluye el prototipo frontend React 19 + Vite en `frontend/`, con datos de demostración en `localStorage` y pendiente de consumir la API. El entorno local permite ejecutar ambos con Docker Compose y habilita CORS para el dev server de Vite en `:5173`. Las verificaciones están documentadas en `backend/README.md`, `backend/API_CONTRATO.md` y `frontend/README.md`.
 
 ## Documentos del equipo
 
@@ -12,6 +12,8 @@ Documentación del MVP comunitario para coordinar la recolección de residuos or
 | [Configuración de skills para agentes](AGENTS.md) | Skills compartidas de backend, interfaz, WhatsApp/IA e integración, disponibles dentro del repositorio. |
 | [Presentación y alcance del MVP](readme_oficial_ecoconecta_villas_de_san_pablo.md) | Propósito, actores, arquitectura, stack propuesto, reglas RN-01 a RN-08 y escenario de demostración. Leer primero. |
 | [Plan de desarrollo, reglas y base de datos](plan_de_desarrollo_reglas_y_base_de_datos.md) | Cronograma por frentes, esquema SQL propuesto y lista de verificación de reglas operativas. |
+| [Contrato de API del backend](backend/API_CONTRATO.md) | Peticiones, respuestas, errores, permisos, transiciones, integración WhatsApp y arranque del backend. |
+| [Frontend v2](frontend/README.md) | Prototipo React + Vite, perfiles de demostración y ejecución local. |
 | [Guía de interfaz e identidad visual](gu_a_de_implementaci_n_ui_e_identidad_visual.md) | Colores, tipografías, accesibilidad y especificaciones de las tres vistas principales. |
 | [Arquitectura de IA y WhatsApp](arquitectura_de_ia_y_flujo_bidireccional_whatsapp.md) | Notificaciones, webhook, clasificación de intenciones y propuesta de prompt del asistente. |
 

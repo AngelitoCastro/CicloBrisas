@@ -1,28 +1,47 @@
-# Plan de integración (pendiente)
+# Integración de Supabase
 
-La implementación actual es solamente frontend. `src/services/repository.ts` concentra la persistencia de demostración. En la fase siguiente, instalar `@supabase/supabase-js`, configurar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`, y reemplazar el acceso local por servicios asíncronos con manejo de errores, caché y control de concurrencia. No colocar claves service_role ni secretos de Meta en el frontend.
+La base de datos del proyecto es PostgreSQL alojado en Supabase. El backend FastAPI sigue siendo el dueño de la autenticación JWT, los permisos por rol, las reglas de puntos, las transiciones, el historial y la privacidad de los datos. Se conecta con SQLAlchemy 2 y psycopg 3 mediante `DATABASE_URL`, usando el pooler compartido de Supabase en modo sesión (puerto `5432`).
 
-## Modelo propuesto
+## Esquema y migraciones
 
-- `profiles`: usuario de Supabase Auth, rol, nombre, grupo asignado, estado.
-- `groups`: categoría (orgánico/aprovechable), nombre, coordinador responsable.
-- `members`: recolectores/huerteros, grupo, teléfono, disponibilidad.
-- `external_users`: habitantes/comercios, teléfono, dirección, piloto; no necesitan un login web.
-- `requests`: usuario externo, grupo/categoría, tipo, descripción, evidencia, preferencia, peso estimado, unidad, modalidad, origen, estado, autorización (por y cuándo), asignación, fecha/franja.
-- `request_events`: auditoría de transiciones, comentarios, actor y fecha.
-- `weighings` / `weighing_items`: peso aceptado por material, tarifa histórica y valor calculado, responsable. `donations`: unidades recibidas y observaciones.
-- `schedules` / `schedule_slots`: días y franjas por grupo/categoría.
-- `material_rates`: material, valor COP/kg, vigencia.
-- `messages`: dirección, contacto, solicitud, estado de entrega, identificador de Meta, contenido.
-- `knowledge_entries`: pregunta, respuesta aprobada, vigencia, versión.
-- Puntos: posponer esquema de reglas y libro de movimientos hasta decisión comunitaria.
+El esquema de referencia vive en Alembic:
 
-## Seguridad y consistencia
+- `usuarios`
+- `reglas_puntos`
+- `solicitudes`
+- `historial_estados`
+- `mensajes_whatsapp`
+- `contenidos_educativos`
 
-RLS en todas las tablas: administradores con permisos globales, coordinadores únicamente en su propio grupo; recolectores y habitantes sin acceso directo al portal. Las funciones SQL/RPC deben comprobar las transiciones, sobre todo pendiente → autorizada → programada → completada, aplicar transacciones para pesajes/cierre y evitar duplicados. Almacenamiento privado para fotos, URLs firmadas y acceso restringido por grupo. Consentimiento y política de retención de datos personales. El selector de roles y localStorage del prototipo NO sustituyen estas medidas.
+Los nombres en inglés del plan inicial (`profiles`, `requests`, `weighings`, etc.) quedan reemplazados por ese esquema. Para alinear una base remota:
+
+```bash
+cd backend
+python -m alembic current
+python -m alembic upgrade head
+python -m app.seed
+```
+
+Si la base ya contiene tablas creadas fuera de Alembic, no se deben borrar: se compara `alembic current` con el esquema real y se prepara una revisión de reconciliación.
+
+## Frontend
+
+El frontend v2 continúa siendo un prototipo con persistencia en `localStorage`. La integración prevista es consumir la API del backend con `VITE_API_URL`, no hablar directamente con PostgREST mientras FastAPI sea la autoridad de reglas y permisos.
+
+Nunca colocar claves `service_role` ni secretos en el navegador. Si en el futuro se expone Supabase al frontend, habilitar RLS en todas las tablas del esquema `public`, conceder permisos solo a los roles necesarios y verificar las políticas con el equipo.
 
 ## WhatsApp e IA
 
-Webhook de Meta en una función de backend (por ejemplo Edge Function), verificación de firma y deduplicación por identificador del mensaje. Guardar entrada, foto y descripción, sugerir categoría y solicitar datos faltantes. La autorización humana es obligatoria antes de programar. Tras la asignación, generar mensajes a ambos contactos mediante una cola de salida; gestionar plantillas aprobadas y ventana de conversación, reintentos idempotentes y estados entregado/error. No afirmar envío si el proveedor no confirma. La bandeja se actualizará mediante consultas y Realtime según los permisos de cada perfil.
+El webhook entrante está en el backend en `POST /api/webhooks/whatsapp`, valida `X-Twilio-Signature`, deduplica por `MessageSid` y usa Twilio para los mensajes salientes. La clasificación de intenciones, visión y transcripción usa OpenAI o Azure OpenAI según `IA_PROVEEDOR`. Esta implementación no usa Meta ni Edge Functions.
 
-El asistente consulta únicamente información autorizada (horarios, material, estado de solicitud, tarifas internas según permisos), responde con base en conocimiento aprobado y deriva al coordinador cuando no tenga certeza. No inventa puntos ni asignaciones. No enviar datos personales innecesarios al modelo.
+La autorización, asignación y programación siguen siendo decisiones humanas. El asistente solo propone intención y campos; no asigna recolectores, horarios ni puntos.
+
+## Verificación
+
+Antes de dar por terminada la integración se debe comprobar:
+
+1. Conexión a Supabase con `SELECT 1` y `alembic current`.
+2. Migraciones aplicadas sin borrar esquemas existentes.
+3. Semilla cargada sin duplicar usuarios ni reglas.
+4. Pruebas HTTP y de webhook en verde.
+5. Pruebas destructivas aisladas en una base desechable mediante `TEST_DATABASE_URL` y `ALLOW_DESTRUCTIVE_DB_TESTS=1`.
