@@ -205,8 +205,33 @@ def test_actualizacion_de_estado_no_procesa(client, db, proveedores) -> None:
     assert db.scalar(select(func.count()).select_from(MensajeWhatsapp)) == 0
 
 
-def test_metodo_get_no_disponible(client, proveedores) -> None:
-    assert client.get("/api/webhooks/whatsapp").status_code == 405
+def test_verificacion_get_meta(client, monkeypatch, proveedores) -> None:
+    monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "EcoConect")
+    respuesta = client.get(
+        "/api/webhooks/whatsapp",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "EcoConect",
+            "hub.challenge": "12345",
+        },
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.text == "12345"
+
+
+def test_verificacion_get_meta_rechaza_token_invalido(
+    client, monkeypatch, proveedores
+) -> None:
+    monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "EcoConect")
+    respuesta = client.get(
+        "/api/webhooks/whatsapp",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "incorrecto",
+            "hub.challenge": "12345",
+        },
+    )
+    assert respuesta.status_code == 403
 
 
 def test_texto_crea_solicitud_con_preferencia_y_dedupe(

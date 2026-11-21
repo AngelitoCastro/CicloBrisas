@@ -1,11 +1,12 @@
-"""Webhook de WhatsApp de Twilio: verificación de firma y mensajes entrantes."""
+"""Webhook de WhatsApp (Meta Cloud API y Twilio): verificación y mensajes entrantes."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse
 from pydantic import ValidationError
 
 from app.security import SesionDB
@@ -29,6 +30,19 @@ def _url_para_firma(request: Request, url_publica: str) -> str:
         return str(request.url)
     consulta = f"?{request.url.query}" if request.url.query else ""
     return f"{proto}://{host}{request.url.path}{consulta}"
+
+
+@router.get("/whatsapp")
+async def verificar_webhook_meta(
+    hub_mode: Annotated[str | None, Query(alias="hub.mode")] = None,
+    hub_verify_token: Annotated[str | None, Query(alias="hub.verify_token")] = None,
+    hub_challenge: Annotated[str | None, Query(alias="hub.challenge")] = None,
+) -> Response:
+    """Verifica el webhook de Meta WhatsApp Cloud API devolviendo hub.challenge."""
+    configuracion = obtener_config()
+    if hub_mode == "subscribe" and hub_verify_token == configuracion.whatsapp_verify_token:
+        return PlainTextResponse(content=hub_challenge or "", status_code=200)
+    raise HTTPException(status_code=403, detail="Token de verificación inválido")
 
 
 @router.post("/whatsapp", status_code=200)
