@@ -59,8 +59,7 @@ def _cargar_settings() -> Settings:
         raise RuntimeError("ALGORITHM debe ser HS256 para esta API.")
 
     origenes_crudos = (
-        os.getenv("CORS_ORIGINS")
-        or "http://localhost:3000,http://127.0.0.1:3000"
+        os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
     )
     origenes = tuple(
         origen.strip().rstrip("/")

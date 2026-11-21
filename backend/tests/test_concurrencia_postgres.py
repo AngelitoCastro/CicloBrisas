@@ -14,11 +14,15 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import Base, create_db_engine
-from app.models import HistorialEstado, ReglaPuntos, Solicitud, Usuario
+from app.models import HistorialEstado, Solicitud, Usuario
 from app.schemas import CerrarSolicitud, ProgramarSolicitud, SolicitudCrear
 from app.seed import run_seed
 from app.services.errors import ErrorDominio
-from app.services.solicitudes import cerrar_solicitud, crear_solicitud, programar_solicitud
+from app.services.solicitudes import (
+    cerrar_solicitud,
+    crear_solicitud,
+    programar_solicitud,
+)
 from app.tiempo import hoy_bogota
 
 
@@ -62,7 +66,9 @@ def test_cierre_concurrente_acredita_puntos_una_sola_vez():
                 select(Usuario).where(Usuario.rol == "COORD_HUERTEROS")
             )
             huertero = session.scalar(
-                select(Usuario).where(Usuario.rol == "HUERTERO").order_by(Usuario.telefono)
+                select(Usuario)
+                .where(Usuario.rol == "HUERTERO")
+                .order_by(Usuario.telefono)
             )
             assert unidad and coordinador and huertero
 

@@ -11,22 +11,28 @@ from pathlib import Path
 
 import bcrypt
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, inspect, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.db import SessionLocal, create_db_engine, engine, get_database_url, get_db
+from alembic import command
+from app.db import (
+    SessionLocal,
+    create_db_engine,
+    engine,
+    get_db,
+    normalize_database_url,
+)
 from app.fixtures import (
     CONTENIDOS_EDUCATIVOS_INICIALES,
     REGLAS_PUNTOS_INICIALES,
     USUARIOS_PILOTO,
 )
 from app.models import (
+    ROLES_USUARIO,
     ContenidoEducativo,
     HistorialEstado,
     MensajeWhatsapp,
-    ROLES_USUARIO,
     ReglaPuntos,
     Solicitud,
     Usuario,
@@ -44,16 +50,32 @@ def _alembic_config(database_url: str) -> Config:
     return cfg
 
 
-@pytest.fixture(scope="module")
-def database_url() -> str:
-    url = get_database_url()
+def _test_database_url() -> str:
+    url = os.getenv("TEST_DATABASE_URL", "").strip()
+    if not url:
+        pytest.skip("Define TEST_DATABASE_URL con una base PostgreSQL desechable.")
+    if os.getenv("ALLOW_DESTRUCTIVE_DB_TESTS", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "si",
+        "sí",
+    }:
+        pytest.skip("Define ALLOW_DESTRUCTIVE_DB_TESTS=1 para pruebas destructivas.")
+    url = normalize_database_url(url)
     if not url.startswith("postgresql+psycopg://"):
         pytest.skip("Las pruebas de persistencia requieren PostgreSQL con psycopg 3.")
+    return url
+
+
+@pytest.fixture(scope="module")
+def database_url() -> str:
+    url = _test_database_url()
     test_engine = create_db_engine(url)
     try:
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-    except Exception as exc:  # pragma: no cover - entorno sin Postgres activo
+    except SQLAlchemyError as exc:  # pragma: no cover - entorno sin Postgres activo
         pytest.fail(f"No fue posible conectar a PostgreSQL ({url}): {exc}")
     finally:
         test_engine.dispose()
@@ -160,7 +182,9 @@ def test_seed_is_idempotent_on_two_runs(migrated_db: str) -> None:
         assert second.contenidos_creados == 0
 
         assert session.scalar(select(func.count(Usuario.id))) == len(USUARIOS_PILOTO)
-        assert session.scalar(select(func.count(ReglaPuntos.id))) == len(REGLAS_PUNTOS_INICIALES)
+        assert session.scalar(select(func.count(ReglaPuntos.id))) == len(
+            REGLAS_PUNTOS_INICIALES
+        )
         assert session.scalar(select(func.count(ContenidoEducativo.id))) == len(
             CONTENIDOS_EDUCATIVOS_INICIALES
         )
@@ -168,7 +192,9 @@ def test_seed_is_idempotent_on_two_runs(migrated_db: str) -> None:
         # Todos los roles y pilotos presentes
         roles_cargados = set(session.scalars(select(Usuario.rol)).all())
         assert roles_cargados == set(ROLES_USUARIO)
-        pilotos = session.scalars(select(Usuario).where(Usuario.es_piloto.is_(True))).all()
+        pilotos = session.scalars(
+            select(Usuario).where(Usuario.es_piloto.is_(True))
+        ).all()
         assert len(pilotos) == 2
 
         # Preserva puntos acumulados y ajuste de regla activa
@@ -206,7 +232,9 @@ def test_seed_cli_runs_twice_successfully(migrated_db: str) -> None:
 
     with SessionLocal() as session:
         assert session.scalar(select(func.count(Usuario.id))) == len(USUARIOS_PILOTO)
-        assert session.scalar(select(func.count(ReglaPuntos.id))) == len(REGLAS_PUNTOS_INICIALES)
+        assert session.scalar(select(func.count(ReglaPuntos.id))) == len(
+            REGLAS_PUNTOS_INICIALES
+        )
         assert session.scalar(select(func.count(ContenidoEducativo.id))) == len(
             CONTENIDOS_EDUCATIVOS_INICIALES
         )
@@ -219,8 +247,12 @@ def test_get_db_lifecycle_and_constraints(migrated_db: str) -> None:
     try:
         run_seed(session, default_password=TEST_SEED_PASSWORD, env={})
 
-        unidad = session.scalar(select(Usuario).where(Usuario.rol == "UNIDAD_PRODUCTIVA"))
-        coord_h = session.scalar(select(Usuario).where(Usuario.rol == "COORD_HUERTEROS"))
+        unidad = session.scalar(
+            select(Usuario).where(Usuario.rol == "UNIDAD_PRODUCTIVA")
+        )
+        coord_h = session.scalar(
+            select(Usuario).where(Usuario.rol == "COORD_HUERTEROS")
+        )
         huertero = session.scalar(select(Usuario).where(Usuario.rol == "HUERTERO"))
         regla_org_up = session.scalar(
             select(ReglaPuntos).where(
@@ -274,7 +306,8 @@ def test_get_db_lifecycle_and_constraints(migrated_db: str) -> None:
         solicitud.cantidad_real_kg = Decimal("10.00")
         solicitud.regla_puntos_id = regla_org_up.id
         solicitud.puntos_otorgados = (
-            regla_org_up.puntos_base_solicitud + regla_org_up.puntos_por_kg * Decimal("10.00")
+            regla_org_up.puntos_base_solicitud
+            + regla_org_up.puntos_por_kg * Decimal("10.00")
         )
         session.add(
             HistorialEstado(
@@ -303,67 +336,63 @@ def test_get_db_lifecycle_and_constraints(migrated_db: str) -> None:
         assert len(solicitud.historial_estados) == 3
 
         # 2. RN-02 / RN-03: rechazar PROGRAMADA incompleta
-        with pytest.raises(IntegrityError):
-            with session.begin_nested():
-                session.add(
-                    Solicitud(
-                        codigo_publico="ECO-2026-ERR-PROG",
-                        solicitante_id=unidad.id,
-                        flujo="ORGANICO",
-                        disponibilidad_usuario="Mañana",
-                        estado="PROGRAMADA",
-                        coordinador_id=coord_h.id,
-                        recolector_id=huertero.id,
-                        fecha_programada=None,
-                        hora_programada=None,
-                    )
+        with pytest.raises(IntegrityError), session.begin_nested():
+            session.add(
+                Solicitud(
+                    codigo_publico="ECO-2026-ERR-PROG",
+                    solicitante_id=unidad.id,
+                    flujo="ORGANICO",
+                    disponibilidad_usuario="Mañana",
+                    estado="PROGRAMADA",
+                    coordinador_id=coord_h.id,
+                    recolector_id=huertero.id,
+                    fecha_programada=None,
+                    hora_programada=None,
                 )
-                session.flush()
+            )
+            session.flush()
 
         # 3. RN-05: rechazar puntos acreditados antes de RECOLECTADA
-        with pytest.raises(IntegrityError):
-            with session.begin_nested():
-                session.add(
-                    Solicitud(
-                        codigo_publico="ECO-2026-ERR-PTS",
-                        solicitante_id=unidad.id,
-                        flujo="ORGANICO",
-                        disponibilidad_usuario="Mañana",
-                        estado="RECIBIDA",
-                        puntos_otorgados=Decimal("10.00"),
-                    )
+        with pytest.raises(IntegrityError), session.begin_nested():
+            session.add(
+                Solicitud(
+                    codigo_publico="ECO-2026-ERR-PTS",
+                    solicitante_id=unidad.id,
+                    flujo="ORGANICO",
+                    disponibilidad_usuario="Mañana",
+                    estado="RECIBIDA",
+                    puntos_otorgados=Decimal("10.00"),
                 )
-                session.flush()
+            )
+            session.flush()
 
         # 4. Rechazar peso no positivo
-        with pytest.raises(IntegrityError):
-            with session.begin_nested():
-                session.add(
-                    Solicitud(
-                        codigo_publico="ECO-2026-ERR-KG",
-                        solicitante_id=unidad.id,
-                        flujo="ORGANICO",
-                        disponibilidad_usuario="Mañana",
-                        cantidad_estimada_kg=Decimal("0.00"),
-                    )
+        with pytest.raises(IntegrityError), session.begin_nested():
+            session.add(
+                Solicitud(
+                    codigo_publico="ECO-2026-ERR-KG",
+                    solicitante_id=unidad.id,
+                    flujo="ORGANICO",
+                    disponibilidad_usuario="Mañana",
+                    cantidad_estimada_kg=Decimal("0.00"),
                 )
-                session.flush()
+            )
+            session.flush()
 
         # 5. Índice único parcial: impedir segunda regla activa para (ORGANICO, HOGAR),
         #    pero permitir guardar una regla histórica inactiva.
-        with pytest.raises(IntegrityError):
-            with session.begin_nested():
-                session.add(
-                    ReglaPuntos(
-                        flujo="ORGANICO",
-                        tipo_generador="HOGAR",
-                        puntos_base_solicitud=Decimal("12.00"),
-                        puntos_por_kg=Decimal("6.00"),
-                        valor_referencia_kg_cop=Decimal("85.00"),
-                        activa=True,
-                    )
+        with pytest.raises(IntegrityError), session.begin_nested():
+            session.add(
+                ReglaPuntos(
+                    flujo="ORGANICO",
+                    tipo_generador="HOGAR",
+                    puntos_base_solicitud=Decimal("12.00"),
+                    puntos_por_kg=Decimal("6.00"),
+                    valor_referencia_kg_cop=Decimal("85.00"),
+                    activa=True,
                 )
-                session.flush()
+            )
+            session.flush()
 
         with session.begin_nested():
             session.add(
@@ -379,17 +408,16 @@ def test_get_db_lifecycle_and_constraints(migrated_db: str) -> None:
             session.flush()
 
         # 6. Rol inválido en Usuario
-        with pytest.raises(IntegrityError):
-            with session.begin_nested():
-                session.add(
-                    Usuario(
-                        nombre="Rol Invalido",
-                        telefono="+573009999999",
-                        password_hash=hash_password(TEST_SEED_PASSWORD),
-                        rol="INVITADO",
-                    )
+        with pytest.raises(IntegrityError), session.begin_nested():
+            session.add(
+                Usuario(
+                    nombre="Rol Invalido",
+                    telefono="+573009999999",
+                    password_hash=hash_password(TEST_SEED_PASSWORD),
+                    rol="INVITADO",
                 )
-                session.flush()
+            )
+            session.flush()
     finally:
         with pytest.raises(StopIteration):
             next(db_gen)

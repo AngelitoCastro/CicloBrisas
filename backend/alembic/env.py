@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app import models  # noqa: F401 - registra todos los modelos en Base.metadata
 from app.db import Base, get_database_url
 

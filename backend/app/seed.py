@@ -58,7 +58,11 @@ def _resolve_password(
     specific = (env.get(env_key) or "").strip()
     if specific:
         return specific
-    fallback = (default_password if default_password is not None else env.get("SEED_DEFAULT_PASSWORD", "")).strip()
+    fallback = (
+        default_password
+        if default_password is not None
+        else env.get("SEED_DEFAULT_PASSWORD", "")
+    ).strip()
     if fallback:
         return fallback
     raise RuntimeError(
@@ -94,9 +98,13 @@ def run_seed(
     contenidos_actualizados = 0
 
     for item in USUARIOS_PILOTO:
-        existing = session.scalar(select(Usuario).where(Usuario.telefono == item["telefono"]))
+        existing = session.scalar(
+            select(Usuario).where(Usuario.telefono == item["telefono"])
+        )
         if existing is None:
-            raw_password = _resolve_password(item["password_env"], environ, default_password)
+            raw_password = _resolve_password(
+                item["password_env"], environ, default_password
+            )
             session.add(
                 Usuario(
                     nombre=item["nombre"],
@@ -118,7 +126,9 @@ def run_seed(
             existing.es_piloto = item["es_piloto"]
             existing.activo = item["activo"]
             if should_reset_passwords:
-                raw_password = _resolve_password(item["password_env"], environ, default_password)
+                raw_password = _resolve_password(
+                    item["password_env"], environ, default_password
+                )
                 existing.password_hash = hash_password(raw_password)
             usuarios_actualizados += 1
 

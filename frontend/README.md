@@ -15,6 +15,8 @@ npm run dev
 
 Abrir la URL que muestre Vite (normalmente `http://localhost:5173`). Para comprobar tipos y compilar: `npm run build`.
 
+Desde la raíz del repositorio, `docker compose up --build` levanta PostgreSQL, la API en `:8000` y este dev server en `:5173`. La API acepta ese origen por CORS y la URL base se configura con `VITE_API_URL` (por defecto `http://localhost:8000`). El prototipo aún persiste en `localStorage` y no consume la API.
+
 ## Perfiles de demostración
 
 - Coordinador de Huerta: orgánicos, autorización, recolección/entrega directa, donaciones, equipo, mensajes, pesaje, horarios e historial.
@@ -60,4 +62,4 @@ src/
 
 ## Próxima fase: Supabase + WhatsApp
 
-Ver `INTEGRACION_SUPABASE.md` para la arquitectura prevista. No contiene credenciales ni conexión activa, y no ejecuta migraciones.
+Ver `INTEGRACION_SUPABASE.md` para el uso de Supabase como base del backend. No contiene credenciales; la URL de la API se configura con `VITE_API_URL`.

@@ -11,8 +11,9 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, time as hora_del_dia
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
+from datetime import time as hora_del_dia
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from sqlalchemy import func, select
@@ -35,6 +36,7 @@ from app.services.errors import (
     PermisoDenegado,
     Validacion,
 )
+from app.services.eventos import emitir
 from app.tiempo import ahora_bogota, hoy_bogota
 
 COORDINADOR_POR_FLUJO: dict[str, str] = {
@@ -102,9 +104,26 @@ def puede_ver_solicitud(usuario: Usuario, solicitud: Solicitud) -> bool:
         return True
     if es_coordinador_de_flujo(usuario, solicitud.flujo):
         return True
-    return (
-        solicitud.recolector_id is not None
-        and solicitud.recolector_id == usuario.id
+    return solicitud.recolector_id is not None and solicitud.recolector_id == usuario.id
+
+
+def solicitud_activa_del_solicitante(
+    db: Session,
+    solicitante: Usuario,
+) -> Solicitud | None:
+    return db.scalar(
+        select(Solicitud)
+        .where(
+            Solicitud.solicitante_id == solicitante.id,
+            Solicitud.estado.in_(ESTADOS_ACTIVOS),
+        )
+        .order_by(Solicitud.creado_en.desc(), Solicitud.id.desc())
+        .options(
+            selectinload(Solicitud.solicitante),
+            selectinload(Solicitud.coordinador),
+            selectinload(Solicitud.recolector),
+        )
+        .limit(1)
     )
 
 
@@ -310,9 +329,7 @@ def listar_solicitudes(
     if estado is not None:
         filtros.append(Solicitud.estado == estado)
 
-    total = db.scalar(
-        select(func.count(Solicitud.id)).where(*filtros)
-    ) or 0
+    total = db.scalar(select(func.count(Solicitud.id)).where(*filtros)) or 0
     stmt = (
         select(Solicitud)
         .where(*filtros)
@@ -446,6 +463,7 @@ def programar_solicitud(
         db.rollback()
         raise
     db.refresh(solicitud)
+    emitir("solicitud_programada", solicitud.id)
     return solicitud
 
 
@@ -458,7 +476,9 @@ def cancelar_solicitud(
     """Cancela una solicitud sin acreditar puntos."""
     solicitud = _cargar_solicitud(db, solicitud_id, bloquear=True)
     es_propietario = solicitud.solicitante_id == usuario.id
-    es_coordinacion = es_coordinador_de_flujo(usuario, solicitud.flujo) or usuario.rol == "ADMIN"
+    es_coordinacion = (
+        es_coordinador_de_flujo(usuario, solicitud.flujo) or usuario.rol == "ADMIN"
+    )
 
     if not (es_propietario or es_coordinacion):
         raise PermisoDenegado("No puedes cancelar esta solicitud.")
@@ -514,6 +534,10 @@ def _verificar_puede_cerrar(
         "pueden cerrar la solicitud.",
         codigo="CIERRE_NO_AUTORIZADO",
     )
+
+
+def verificar_puede_cerrar(usuario: Usuario, solicitud: Solicitud) -> None:
+    _verificar_puede_cerrar(usuario.id, usuario.rol, solicitud)
 
 
 def _cerrar_intento(
@@ -587,9 +611,7 @@ def _cerrar_intento(
     base = _cuantizar(regla.puntos_base_solicitud)
     por_kg = _cuantizar(regla.puntos_por_kg)
     puntos = _cuantizar(base + por_kg * cantidad)
-    nuevo_acumulado = _cuantizar(
-        Decimal(solicitante.puntos_acumulados or 0) + puntos
-    )
+    nuevo_acumulado = _cuantizar(Decimal(solicitante.puntos_acumulados or 0) + puntos)
 
     solicitud.cantidad_real_kg = cantidad
     solicitud.puntos_otorgados = puntos
@@ -654,7 +676,7 @@ def cerrar_solicitud(
     actor_rol = usuario.rol
     for intento in range(1, _MAX_INTENTOS_CIERRE + 1):
         try:
-            return _cerrar_intento(
+            resultado = _cerrar_intento(
                 db,
                 actor_id=actor_id,
                 actor_rol=actor_rol,
@@ -662,6 +684,8 @@ def cerrar_solicitud(
                 cantidad_real_kg=datos.cantidad_real_kg,
                 nota_operativa=datos.nota_operativa,
             )
+            emitir("solicitud_cerrada", resultado.solicitud.id)
+            return resultado
         except IntegrityError as exc:
             db.rollback()
             raise Conflicto(
@@ -757,4 +781,6 @@ __all__ = [
     "programar_solicitud",
     "puede_ver_solicitud",
     "revisar_solicitud",
+    "solicitud_activa_del_solicitante",
+    "verificar_puede_cerrar",
 ]

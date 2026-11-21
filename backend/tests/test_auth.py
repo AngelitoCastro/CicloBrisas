@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -37,7 +37,9 @@ def test_login_me_y_hash_bcrypt(client, db, telefono):
     assert me.json()["id"] == cuerpo["usuario"]["id"]
     assert "telefono" in me.json()
 
-    usuario = db.scalar(select(Usuario).where(Usuario.telefono == telefono["UNIDAD_PRODUCTIVA"]))
+    usuario = db.scalar(
+        select(Usuario).where(Usuario.telefono == telefono["UNIDAD_PRODUCTIVA"])
+    )
     assert usuario is not None
     assert usuario.password_hash != TEST_PASSWORD
     assert usuario.password_hash.startswith("$2")
@@ -47,7 +49,9 @@ def test_login_me_y_hash_bcrypt(client, db, telefono):
     )
 
 
-def test_login_con_password_incorrecta_no_revela_si_el_telefono_existe(client, telefono):
+def test_login_con_password_incorrecta_no_revela_si_el_telefono_existe(
+    client, telefono
+):
     inexistente = client.post(
         "/api/auth/login",
         json={"telefono": "+573009999999", "password": "lo-que-sea-2026"},
@@ -60,7 +64,10 @@ def test_login_con_password_incorrecta_no_revela_si_el_telefono_existe(client, t
     assert incorrecta.status_code == 401
     assert inexistente.json()["detail"]["codigo"] == "NO_AUTENTICADO"
     assert incorrecta.json()["detail"]["codigo"] == "NO_AUTENTICADO"
-    assert inexistente.json()["detail"]["mensaje"] == incorrecta.json()["detail"]["mensaje"]
+    assert (
+        inexistente.json()["detail"]["mensaje"]
+        == incorrecta.json()["detail"]["mensaje"]
+    )
 
 
 def test_cuenta_inactiva_no_puede_iniciar_sesion(client, db, telefono):
@@ -78,7 +85,7 @@ def test_cuenta_inactiva_no_puede_iniciar_sesion(client, db, telefono):
 
 def test_token_expirado_invalido_y_ausente(client, db, telefono):
     usuario = usuario_por_rol(db, "HOGAR", telefono["HOGAR"])
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     expirado = jwt.encode(
         {
             "sub": str(usuario.id),

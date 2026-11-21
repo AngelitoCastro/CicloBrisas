@@ -40,7 +40,9 @@ def _solicitud_programada(client, db, login, telefono):
 def test_contacto_visible_solo_para_perfiles_autorizados(client, db, login, telefono):
     solicitud, huertero = _solicitud_programada(client, db, login, telefono)
 
-    propietario = usuario_por_rol(db, "UNIDAD_PRODUCTIVA", telefono["UNIDAD_PRODUCTIVA"])
+    propietario = usuario_por_rol(
+        db, "UNIDAD_PRODUCTIVA", telefono["UNIDAD_PRODUCTIVA"]
+    )
     coordinador = usuario_por_rol(db, "COORD_HUERTEROS", telefono["COORD_HUERTEROS"])
     admin = usuario_por_rol(db, "ADMIN", telefono["ADMIN"])
     externo_ajeno = usuario_por_rol(db, "HOGAR", telefono["HOGAR_GENERAL"])
@@ -62,7 +64,9 @@ def test_contacto_visible_solo_para_perfiles_autorizados(client, db, login, tele
         assert respuesta.solicitante.direccion is None
         assert respuesta.solicitante.sector_manzana is None
 
-    forzado = construir_solicitud_response(solicitud, propietario, ocultar_contacto=True)
+    forzado = construir_solicitud_response(
+        solicitud, propietario, ocultar_contacto=True
+    )
     assert forzado.solicitante.telefono is None
     assert forzado.solicitante.direccion is None
 

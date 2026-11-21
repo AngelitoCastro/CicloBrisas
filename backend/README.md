@@ -44,6 +44,19 @@ curl http://localhost:8000/health
 
 La API no arranca si `SECRET_KEY` falta o tiene menos de 32 caracteres. No subas `.env` ni secretos al repositorio.
 
+## Supabase como base de datos
+
+La API no cambia de framework: Supabase provee PostgreSQL. Define `DATABASE_URL` en la raíz `.env` con la cadena del **pooler compartido** de Supabase en modo sesión (puerto `5432`). `app/db.py` normaliza `postgres://` o `postgresql://` a `postgresql+psycopg://`; codifica los caracteres especiales del password en la URL.
+
+```bash
+cd backend
+python -m alembic current
+python -m alembic upgrade head
+python -m app.seed
+```
+
+Si la base remota ya tiene tablas creadas fuera de Alembic, no ejecutes `downgrade`: compara `alembic current` con el esquema real y prepara una revisión de reconciliación. Las pruebas destructivas exigen `TEST_DATABASE_URL` y `ALLOW_DESTRUCTIVE_DB_TESTS=1`; nunca usan `DATABASE_URL`.
+
 ## Endpoints principales
 
 | Método y ruta | Uso |
@@ -62,6 +75,7 @@ La API no arranca si `SECRET_KEY` falta o tiene menos de 32 caracteres. No subas
 | `GET/POST/PATCH /api/admin/reglas-puntos` | Administración de reglas (solo ADMIN). |
 | `GET /api/admin/usuarios` | Listado administrativo de cuentas. |
 | `PATCH /api/admin/usuarios/{id}/piloto` | Etiqueta piloto FSD (RN-08, solo ADMIN). |
+| `POST /api/webhooks/whatsapp` | Mensajes entrantes firmados por Twilio WhatsApp. |
 
 Detalle completo, ejemplos JSON, matriz de permisos, transiciones y errores: [API_CONTRATO.md](API_CONTRATO.md).
 
@@ -88,17 +102,17 @@ Pruebas de persistencia y concurrencia contra PostgreSQL 16 desechable:
 ```bash
 # Base de datos de prueba, nunca una base con datos reales
 export TEST_DATABASE_URL=postgresql+psycopg://ecoconecta:clave@localhost:5432/ecoconecta_test
-export DATABASE_URL="$TEST_DATABASE_URL"
 export ALLOW_DESTRUCTIVE_DB_TESTS=1
 pytest tests -v
 ```
+
+`DATABASE_URL` no se sobrescribe: puede apuntar a la base de la aplicación (incluido Supabase) y las pruebas destructivas no la tocarán.
 
 En Docker, usa una base desechable distinta de la de demostración (las pruebas de persistencia reinician el esquema):
 
 ```bash
 docker compose exec -T db createdb -U ecoconecta ecoconecta_test
 docker compose run --rm backend env \
-  DATABASE_URL=postgresql+psycopg://ecoconecta:<clave>@db:5432/ecoconecta_test \
   TEST_DATABASE_URL=postgresql+psycopg://ecoconecta:<clave>@db:5432/ecoconecta_test \
   ALLOW_DESTRUCTIVE_DB_TESTS=1 \
   pytest tests -v
@@ -114,7 +128,22 @@ Cobertura verificada en esta entrega:
 - Cierre con fórmula parametrizable, historial, actualización de puntos, doble cierre y cierre sin regla activa.
 - Administración de reglas (reemplazo de la activa), validaciones y modo piloto.
 - Privacidad del serializador y contrato OpenAPI.
+- WhatsApp con Twilio: firma y cuenta, payloads form, estados ignorados, texto/foto/audio, registro de número nuevo, flujo ambiguo, dedupe, notificación al programar y cierre idempotente con proveedores simulados.
+- IA: chat, visión y transcripción con dobles de `httpx`, en modo OpenAI y Azure OpenAI (endpoint clásico por deployment y endpoint v1).
 - PostgreSQL: migraciones reversibles, semilla idempotente, restricciones SQL y cierre concurrente con una sola acreditación.
+
+## Conexión de Twilio y proveedor de IA
+
+1. Completar `.env` con `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` y, si se usan plantillas, `TWILIO_CONTENT_SID`.
+2. En Twilio Console, configurar el webhook entrante del remitente de WhatsApp con `POST https://<host>/api/webhooks/whatsapp`. La URL debe ser HTTPS y pública; la firma se valida contra la URL exacta y todos los parámetros del formulario.
+3. Definir `WEBHOOK_PUBLIC_URL` con esa misma URL si el backend corre detrás de proxy o túnel y `request.url` no coincide con la URL pública. Si se deja vacía, se reconstruye con `X-Forwarded-Proto`/`X-Forwarded-Host`.
+4. Si se usa el sandbox, enviar el código `join <palabra>` al número sandbox antes de probar con un teléfono personal.
+5. IA por defecto: dejar `IA_PROVEEDOR=openai` y completar `OPENAI_API_KEY`. `OPENAI_MODEL=gpt-4o-mini` atiende texto e imágenes; `OPENAI_TRANSCRIPTION_MODEL=gpt-transcribe` atiende notas de voz.
+6. Azure OpenAI: poner `IA_PROVEEDOR=azure` y completar `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_CHAT_DEPLOYMENT` y `AZURE_OPENAI_AUDIO_DEPLOYMENT`. El deployment es el nombre elegido al desplegar el modelo, no `gpt-4o-mini`.
+7. Modo Azure: con `AZURE_OPENAI_API_MODE=classic` se llama a `/openai/deployments/<deployment>/chat/completions?api-version=<versión>`; con `v1` o un endpoint terminado en `/openai/v1` se llama a `/openai/v1/chat/completions` y el deployment viaja en `model`. La autenticación usa la cabecera `api-key` y la versión por defecto es `2024-10-21`.
+8. Reiniciar el backend para que `obtener_config()` lea las nuevas variables. No se requiere migración: el dedupe reutiliza `wa_message_id` con el `MessageSid` de Twilio.
+
+Fuentes oficiales consultadas: [chat completions clásico](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference) y [API v1 de Foundry Models](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest).
 
 ## Semilla piloto
 

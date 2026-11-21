@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import time
-
-from app.models import Usuario
 from tests.conftest import (
     HORA_PROGRAMADA,
     fecha_futura,
@@ -15,7 +12,9 @@ from tests.conftest import (
 def _crear(client, headers, flujo: str = "ORGANICO", **cambios):
     payload = {
         "flujo": flujo,
-        "subtipo_material": "Cáscaras y vegetales" if flujo == "ORGANICO" else "Cartón y PET",
+        "subtipo_material": "Cáscaras y vegetales"
+        if flujo == "ORGANICO"
+        else "Cartón y PET",
         "cantidad_estimada_kg": 12.5,
         "disponibilidad_usuario": "Lunes a viernes de 8:00 a.m. a 11:00 a.m.",
         "observaciones": "Dejar el balde en la portería.",
@@ -79,7 +78,9 @@ def test_alta_listado_e_historial_con_contacto_del_propietario(
     assert registros[0]["actor"]["rol"] == "UNIDAD_PRODUCTIVA"
 
     # RN-01: el coordinador de huerteros ve el flujo orgánico; el de recicladores no.
-    lista_huerteros = client.get("/api/solicitudes", headers=login(telefono["COORD_HUERTEROS"]))
+    lista_huerteros = client.get(
+        "/api/solicitudes", headers=login(telefono["COORD_HUERTEROS"])
+    )
     assert lista_huerteros.status_code == 200
     assert lista_huerteros.json()["total"] == 1
     assert lista_huerteros.json()["items"][0]["solicitante"]["telefono"]
@@ -97,7 +98,9 @@ def test_alta_listado_e_historial_con_contacto_del_propietario(
 
     # Otro usuario externo no puede ver el detalle ni listar la solicitud ajena.
     headers_otro_hogar = login(telefono["HOGAR_GENERAL"])
-    detalle_ajeno = client.get(f"/api/solicitudes/{solicitud['id']}", headers=headers_otro_hogar)
+    detalle_ajeno = client.get(
+        f"/api/solicitudes/{solicitud['id']}", headers=headers_otro_hogar
+    )
     assert detalle_ajeno.status_code == 404
     assert detalle_ajeno.json()["detail"]["codigo"] == "NO_ENCONTRADO"
     lista_ajena = client.get("/api/solicitudes", headers=headers_otro_hogar)
@@ -135,7 +138,10 @@ def test_revision_asignacion_programacion_e_historial(client, db, login, telefon
 
     asignar = client.post(
         f"/api/solicitudes/{solicitud_id}/asignar",
-        json={"recolector_id": str(reciclador.id), "nota_operativa": "Asignada a ruta A"},
+        json={
+            "recolector_id": str(reciclador.id),
+            "nota_operativa": "Asignada a ruta A",
+        },
         headers=coord,
     )
     assert asignar.status_code == 200, asignar.text
@@ -206,11 +212,14 @@ def test_revision_asignacion_programacion_e_historial(client, db, login, telefon
 
     # El coordinador del otro flujo no puede operar sobre esta solicitud.
     coord_h = login(telefono["COORD_HUERTEROS"])
-    assert client.post(
-        f"/api/solicitudes/{solicitud_id}/revisar",
-        json={},
-        headers=coord_h,
-    ).status_code == 403
+    assert (
+        client.post(
+            f"/api/solicitudes/{solicitud_id}/revisar",
+            json={},
+            headers=coord_h,
+        ).status_code
+        == 403
+    )
     assert _programar(client, coord_h, solicitud_id, reciclador.id).status_code == 403
 
 
@@ -243,11 +252,16 @@ def test_cierre_con_peso_puntos_y_proteccion_contra_doble_cierre(
     assert anticipado.status_code == 409
     assert anticipado.json()["detail"]["codigo"] == "ESTADO_INVALIDO"
 
-    assert _programar(client, coordinador, solicitud["id"], huertero.id).status_code == 200
+    assert (
+        _programar(client, coordinador, solicitud["id"], huertero.id).status_code == 200
+    )
 
     # Solo el recolector asignado, el coordinador del flujo o ADMIN pueden cerrar.
     assert _cerrar(client, headers_up, solicitud["id"]).status_code == 403
-    assert _cerrar(client, login(otro_huertero.telefono), solicitud["id"]).status_code == 403
+    assert (
+        _cerrar(client, login(otro_huertero.telefono), solicitud["id"]).status_code
+        == 403
+    )
 
     cierre = _cerrar(client, login(huertero.telefono), solicitud["id"], 10.0)
     assert cierre.status_code == 200, cierre.text
@@ -257,7 +271,9 @@ def test_cierre_con_peso_puntos_y_proteccion_contra_doble_cierre(
     # Semilla: ORGANICO/UNIDAD_PRODUCTIVA = 15 base + 6 por kg.
     assert cuerpo["puntos_otorgados"] == 75.0
     assert cuerpo["regla_puntos_id"] is not None
-    assert cuerpo["calculo_puntos"]["formula"].startswith("15.00 base + 10.00 kg × 6.00")
+    assert cuerpo["calculo_puntos"]["formula"].startswith(
+        "15.00 base + 10.00 kg × 6.00"
+    )
     assert "validación FSD" in cuerpo["calculo_puntos"]["nota_fsd"]
 
     me = client.get("/api/auth/me", headers=headers_up)
@@ -278,7 +294,10 @@ def test_cierre_con_peso_puntos_y_proteccion_contra_doble_cierre(
         "PROGRAMADA",
         "RECOLECTADA",
     ]
-    assert "Cálculo parametrizable sujeto a validación FSD" in historial[-1]["nota_operativa"]
+    assert (
+        "Cálculo parametrizable sujeto a validación FSD"
+        in historial[-1]["nota_operativa"]
+    )
     assert historial[-1]["actor"]["rol"] == "HUERTERO"
 
     # Tampoco se puede cancelar una solicitud ya recolectada.
@@ -290,7 +309,9 @@ def test_cierre_con_peso_puntos_y_proteccion_contra_doble_cierre(
     assert cancelada.status_code == 409
 
 
-def test_cierre_sin_regla_activa_no_acredita_y_luego_funciona(client, db, login, telefono):
+def test_cierre_sin_regla_activa_no_acredita_y_luego_funciona(
+    client, db, login, telefono
+):
     admin = login(telefono["ADMIN"])
     reglas = client.get(
         "/api/admin/reglas-puntos",
@@ -309,22 +330,30 @@ def test_cierre_sin_regla_activa_no_acredita_y_luego_funciona(client, db, login,
     headers_hogar = login(telefono["HOGAR"])
     solicitud = _crear(client, headers_hogar, "ORGANICO").json()
     huertero = usuario_por_rol(db, "HUERTERO", telefono["HUERTERO"])
-    assert _programar(
-        client,
-        login(telefono["COORD_HUERTEROS"]),
-        solicitud["id"],
-        huertero.id,
-    ).status_code == 200
+    assert (
+        _programar(
+            client,
+            login(telefono["COORD_HUERTEROS"]),
+            solicitud["id"],
+            huertero.id,
+        ).status_code
+        == 200
+    )
 
     sin_regla = _cerrar(client, login(huertero.telefono), solicitud["id"])
     assert sin_regla.status_code == 409
     assert sin_regla.json()["detail"]["codigo"] == "REGLA_PUNTOS_NO_DISPONIBLE"
 
-    detalle = client.get(f"/api/solicitudes/{solicitud['id']}", headers=headers_hogar).json()
+    detalle = client.get(
+        f"/api/solicitudes/{solicitud['id']}", headers=headers_hogar
+    ).json()
     assert detalle["estado"] == "PROGRAMADA"
     assert detalle["puntos_otorgados"] == 0.0
     assert detalle["regla_puntos_id"] is None
-    assert client.get("/api/auth/me", headers=headers_hogar).json()["puntos_acumulados"] == 0.0
+    assert (
+        client.get("/api/auth/me", headers=headers_hogar).json()["puntos_acumulados"]
+        == 0.0
+    )
 
     nueva = client.post(
         "/api/admin/reglas-puntos",
@@ -344,7 +373,10 @@ def test_cierre_sin_regla_activa_no_acredita_y_luego_funciona(client, db, login,
     cierre = _cerrar(client, login(huertero.telefono), solicitud["id"], 10.0)
     assert cierre.status_code == 200, cierre.text
     assert cierre.json()["puntos_otorgados"] == 90.0
-    assert client.get("/api/auth/me", headers=headers_hogar).json()["puntos_acumulados"] == 90.0
+    assert (
+        client.get("/api/auth/me", headers=headers_hogar).json()["puntos_acumulados"]
+        == 90.0
+    )
 
 
 def test_cancelacion_por_propietario_y_por_coordinacion(client, db, login, telefono):
@@ -361,7 +393,10 @@ def test_cancelacion_por_propietario_y_por_coordinacion(client, db, login, telef
     programada = _crear(client, headers_hogar, "RECICLABLE").json()
     reciclador = usuario_por_rol(db, "RECICLADOR", telefono["RECICLADOR"])
     coordinador = login(telefono["COORD_RECICLADORES"])
-    assert _programar(client, coordinador, programada["id"], reciclador.id).status_code == 200
+    assert (
+        _programar(client, coordinador, programada["id"], reciclador.id).status_code
+        == 200
+    )
 
     propia_tarde = client.post(
         f"/api/solicitudes/{programada['id']}/cancelar",

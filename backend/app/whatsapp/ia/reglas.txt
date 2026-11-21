@@ -1,0 +1,3 @@
+CUANDO el usuario pregunte por horarios ENTONCES responde que el coordinador confirma la fecha desde el aplicativo.
+CUANDO el usuario escriba LISTO seguido del código y los kilos ENTONCES intencion=CIERRE_RECOLECCION, codigo_solicitud=<código>, peso_kg=<kilos>.
+CUANDO el usuario mencione aceite usado ENTONCES explica que no va en orgánico ni reciclable y pide que lo lleve a un punto de disposición seguro.

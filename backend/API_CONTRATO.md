@@ -369,51 +369,35 @@ Todas las rutas `/api/admin/*` exigen rol `ADMIN`. El administrador puede consul
 - `GET /api/admin/usuarios?rol=&es_piloto=&activo=&q=&limit=&offset=` — listado administrativo.
 - `PATCH /api/admin/usuarios/{id}/piloto` — body `{"es_piloto": true}`. Solo aplica a `HOGAR` y `UNIDAD_PRODUCTIVA`; otro rol responde `422 USUARIO_NO_APLICA_PILOTO`.
 
-## 7. Integración WhatsApp
+## 7. Integración WhatsApp con Twilio
 
-El webhook debe reutilizar los servicios de `app.services.solicitudes`; no debe duplicar el cálculo ni cambiar estados por su cuenta.
+El webhook vive en el mismo backend FastAPI y reutiliza los servicios de `app.services.solicitudes`; no duplica el cálculo de puntos ni cambia estados por su cuenta. Meta Cloud API quedó reemplazada por Twilio WhatsApp.
 
-```python
-from decimal import Decimal
+### Endpoint
 
-from app.models import Usuario
-from app.schemas import CerrarSolicitud
-from app.services.errors import ErrorDominio
-from app.services.solicitudes import (
-    buscar_solicitud_por_codigo,
-    cerrar_solicitud_por_codigo,
-)
+- `POST /api/webhooks/whatsapp` — recibe `application/x-www-form-urlencoded`, exige `X-Twilio-Signature` y valida la URL exacta, todos los parámetros y `AccountSid` con `twilio.request_validator.RequestValidator`. La URL a validar se toma de `WEBHOOK_PUBLIC_URL`, se reconstruye con `X-Forwarded-Proto`/`X-Forwarded-Host` detrás de proxy o usa `request.url`. Firma o cuenta inválidas devuelven `403`.
+- El endpoint responde siempre TwiML vacío (`<Response/>`) para evitar respuestas automáticas no deseadas. Los callbacks de estado (`MessageStatus`/`SmsStatus`) se ignoran.
+- Formatos admitidos: `MessageSid` (dedupe), `From`, `To`, `Body`, `NumMedia`, `MediaUrl0` y `MediaContentType0`. El número se normaliza quitando el prefijo `whatsapp:` y aplicando formato internacional colombiano cuando aplica.
+- No existe el desafío GET de Meta; en Twilio la verificación es la firma de cada petición.
 
-# 1. Resolver remitente por teléfono y validar que esté activo.
-actor = db.query(Usuario).filter(Usuario.telefono == telefono_remitente).one_or_none()
+### Flujo admitido
 
-# 2. Cerrar por código público del mensaje "LISTO ECO-2026-000001 10".
-try:
-    resultado = cerrar_solicitud_por_codigo(
-        db,
-        actor,
-        "ECO-2026-000001",
-        CerrarSolicitud(cantidad_real_kg=Decimal("10.0")),
-    )
-except ErrorDominio as exc:
-    # exc.codigo: SOLICITUD_YA_CERRADA, CIERRE_NO_AUTORIZADO,
-    # ESTADO_INVALIDO, REGLA_PUNTOS_NO_DISPONIBLE, etc.
-    ...
-else:
-    # El servicio ya hizo COMMIT. Solo ahora se notifica al usuario/recolector.
-    solicitud = resultado.solicitud
-    puntos = resultado.puntos_otorgados
-```
+- Texto, foto o nota de voz: el proveedor configurado (`IA_PROVEEDOR=openai|azure`) propone una intención y campos; el backend valida y ejecuta.
+- `SOLICITUD_RECOLECCION`: si el flujo es inferible, se crea con `crear_solicitud()` en estado `RECIBIDA`, guardando la preferencia del vecino en `disponibilidad_usuario`. La IA nunca asigna recolector ni fecha/hora. Si falta el flujo, el bot pregunta y guarda el borrador en `MensajeWhatsapp.borrador_json` hasta la respuesta.
+- `CIERRE_RECOLECCION`: la IA extrae código y peso; `cerrar_solicitud_por_codigo()` valida remitente, permisos, estado y peso en la misma transacción que acredita puntos. Un cierre repetido no duplica acreditación.
+- `CONSULTA_ESTADO`: se resuelve solo la última solicitud activa del teléfono autenticado, sin confiar en un código público como autorización.
+- `DUDA_AMBIENTAL` y `OTRO`: respuesta educativa breve sin cambios de estado.
+- Número no registrado: el bot pide nombre y dirección; con esa respuesta crea un `Usuario` `HOGAR`, `es_piloto=true`, contraseña aleatoria y teléfono normalizado a formato internacional.
 
-Reglas de integración:
+### Mensajería, IA y configuración
 
-- La IA solo extrae `codigo_publico` y `peso_kg`; el backend valida remitente, permisos, estado y peso. La IA no cierra ni asigna.
-- Deduplicar mensajes de WhatsApp (por `message_id`) antes de llamar al servicio. Aun así, un cierre repetido responde `409 SOLICITUD_YA_CERRADA` y no vuelve a acreditar.
-- No reintentar automáticamente un `SOLICITUD_YA_CERRADA` como si fuera un fallo transitorio.
-- Enviar notificaciones únicamente después del `COMMIT` exitoso.
-- Anonimizar el texto antes de consultar al proveedor de IA: sin nombres, teléfonos ni direcciones exactas.
-- El webhook puede usar `buscar_solicitud_por_codigo()` para consultas de estado, pero debe validar que el solicitante, coordinador o recolector corresponda al teléfono.
-- Para mensajes salientes se puede registrar `MensajeWhatsapp` (`direccion="SALIENTE"`), sin incluir secretos.
+- Las respuestas salientes usan `twilio.rest.Client.messages.create` con `from_=TWILIO_WHATSAPP_NUMBER` y `to=whatsapp:<teléfono>`. Si `TWILIO_CONTENT_SID` está configurado se envía ese Content SID con `content_variables={"1": texto}`; si no, texto libre dentro de la ventana de conversación de 24 h.
+- Los eventos post-commit `solicitud_programada` y `solicitud_cerrada` se publican desde `app.services.solicitudes` y `app.whatsapp.notificaciones` envía un mensaje al solicitante con recolector, día y hora o con peso y puntos. Asignar sin programar no notifica.
+- Los archivos se descargan desde `MediaUrl0` con Basic Auth de Twilio y solo desde `api.twilio.com`. Las imágenes se redimensionan y pierden EXIF; los audios se transcriben con el proveedor de IA configurado. No se conserva el archivo original.
+- `wa_message_id` continúa siendo la columna de dedupe y ahora almacena el `MessageSid` de Twilio; no se requirió migración.
+- Variables: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`, `TWILIO_CONTENT_SID`, `WEBHOOK_PUBLIC_URL`, `IA_PROVEEDOR` (`openai` por defecto o `azure`), `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4o-mini`), `OPENAI_TRANSCRIPTION_MODEL` (default `gpt-transcribe`), `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_CHAT_DEPLOYMENT`, `AZURE_OPENAI_AUDIO_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION` (default `2024-10-21`) y `AZURE_OPENAI_API_MODE` (`classic` o `v1`).
+- El texto se anonimiza antes del prompt (sin nombres, teléfonos ni direcciones exactas) y los errores no exponen secretos ni datos personales.
+- Las respuestas de IA se validan con `ClasificacionIA` (`extra="forbid"`); una salida inválida cae a una respuesta aclaratoria y no ejecuta operaciones.
 
 ## 8. Cuentas semilla ficticias
 

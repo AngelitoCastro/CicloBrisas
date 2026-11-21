@@ -20,11 +20,14 @@ def _verificar_admin(usuario: Usuario) -> None:
 
 
 def _validar_no_negativos(datos: ReglaPuntosCrear) -> None:
-    if min(
-        datos.puntos_base_solicitud,
-        datos.puntos_por_kg,
-        datos.valor_referencia_kg_cop,
-    ) < 0:
+    if (
+        min(
+            datos.puntos_base_solicitud,
+            datos.puntos_por_kg,
+            datos.valor_referencia_kg_cop,
+        )
+        < 0
+    ):
         raise Validacion(
             "VALORES_NO_NEGATIVOS",
             "Los parámetros de puntos y valor de referencia no pueden ser negativos.",

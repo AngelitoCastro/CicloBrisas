@@ -8,7 +8,10 @@ from sqlalchemy import select
 from app.models import Solicitud, Usuario
 from app.schemas import CerrarSolicitud
 from app.services.errors import Conflicto, NoEncontrado, PermisoDenegado
-from app.services.solicitudes import buscar_solicitud_por_codigo, cerrar_solicitud_por_codigo
+from app.services.solicitudes import (
+    buscar_solicitud_por_codigo,
+    cerrar_solicitud_por_codigo,
+)
 from tests.conftest import fecha_futura, usuario_por_rol
 
 
@@ -24,15 +27,18 @@ def test_cierre_por_codigo_es_idempotente_y_valida_actor(client, db, login, tele
         headers=headers_hogar,
     ).json()
     huertero = usuario_por_rol(db, "HUERTERO", telefono["HUERTERO"])
-    assert client.patch(
-        f"/api/solicitudes/{creada['id']}/programar",
-        json={
-            "recolector_id": str(huertero.id),
-            "fecha_programada": fecha_futura().isoformat(),
-            "hora_programada": "11:00",
-        },
-        headers=login(telefono["COORD_HUERTEROS"]),
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/api/solicitudes/{creada['id']}/programar",
+            json={
+                "recolector_id": str(huertero.id),
+                "fecha_programada": fecha_futura().isoformat(),
+                "hora_programada": "11:00",
+            },
+            headers=login(telefono["COORD_HUERTEROS"]),
+        ).status_code
+        == 200
+    )
 
     db.expire_all()
     encontrada = buscar_solicitud_por_codigo(db, creada["codigo_publico"].lower())

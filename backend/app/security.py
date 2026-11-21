@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 import bcrypt
 import jwt
@@ -24,9 +25,7 @@ from app.services.errors import (
 )
 
 # Hash de relleno para reducir diferencias de tiempo cuando el teléfono no existe.
-_DUMMY_PASSWORD_HASH = (
-    "$2b$12$vDyfT/M4ApqWNaMBrM0KK.rvftGIUfdI.ZBdQoVPd/JqbcwfhWr16"
-).encode("utf-8")
+_DUMMY_PASSWORD_HASH = b"$2b$12$vDyfT/M4ApqWNaMBrM0KK.rvftGIUfdI.ZBdQoVPd/JqbcwfhWr16"
 
 bearer_scheme = HTTPBearer(
     auto_error=False,
@@ -65,7 +64,7 @@ def _verificar_hash_relleno(plain_password: str) -> None:
 
 def crear_access_token(usuario: Usuario) -> tuple[str, int]:
     """Emite un JWT de acceso y devuelve (token, segundos_de_vigencia)."""
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     expira = ahora + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": str(usuario.id),

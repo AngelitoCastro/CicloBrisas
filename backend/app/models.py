@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -54,7 +53,7 @@ CATEGORIAS_CONTENIDO: tuple[str, ...] = ("ORGANICO", "RECICLABLE", "HUERTA", "RU
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _sql_in(column_name: str, values: tuple[str, ...]) -> str:
@@ -68,7 +67,9 @@ class Usuario(Base):
     __tablename__ = "usuarios"
     __table_args__ = (
         CheckConstraint(_sql_in("rol", ROLES_USUARIO), name="rol_valido"),
-        CheckConstraint("puntos_acumulados >= 0", name="puntos_acumulados_no_negativos"),
+        CheckConstraint(
+            "puntos_acumulados >= 0", name="puntos_acumulados_no_negativos"
+        ),
         Index("ix_usuarios_rol_activo", "rol", "activo"),
         Index("ix_usuarios_es_piloto", "es_piloto"),
     )
@@ -82,8 +83,8 @@ class Usuario(Base):
     telefono: Mapped[str] = mapped_column(String(25), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     rol: Mapped[str] = mapped_column(String(30), nullable=False)
-    direccion: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    sector_manzana: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    direccion: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    sector_manzana: Mapped[str | None] = mapped_column(String(100), nullable=True)
     es_piloto: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -109,15 +110,15 @@ class Usuario(Base):
         server_default=func.now(),
     )
 
-    solicitudes_creadas: Mapped[list["Solicitud"]] = relationship(
+    solicitudes_creadas: Mapped[list[Solicitud]] = relationship(
         back_populates="solicitante",
         foreign_keys="Solicitud.solicitante_id",
     )
-    solicitudes_coordinadas: Mapped[list["Solicitud"]] = relationship(
+    solicitudes_coordinadas: Mapped[list[Solicitud]] = relationship(
         back_populates="coordinador",
         foreign_keys="Solicitud.coordinador_id",
     )
-    solicitudes_asignadas: Mapped[list["Solicitud"]] = relationship(
+    solicitudes_asignadas: Mapped[list[Solicitud]] = relationship(
         back_populates="recolector",
         foreign_keys="Solicitud.recolector_id",
     )
@@ -129,10 +130,14 @@ class ReglaPuntos(Base):
     __tablename__ = "reglas_puntos"
     __table_args__ = (
         CheckConstraint(_sql_in("flujo", FLUJOS_RESIDUO), name="flujo_valido"),
-        CheckConstraint(_sql_in("tipo_generador", TIPOS_GENERADOR), name="tipo_generador_valido"),
+        CheckConstraint(
+            _sql_in("tipo_generador", TIPOS_GENERADOR), name="tipo_generador_valido"
+        ),
         CheckConstraint("puntos_base_solicitud >= 0", name="puntos_base_no_negativos"),
         CheckConstraint("puntos_por_kg >= 0", name="puntos_por_kg_no_negativos"),
-        CheckConstraint("valor_referencia_kg_cop >= 0", name="valor_referencia_no_negativo"),
+        CheckConstraint(
+            "valor_referencia_kg_cop >= 0", name="valor_referencia_no_negativo"
+        ),
         Index(
             "uq_reglas_puntos_activa_flujo_generador",
             "flujo",
@@ -164,7 +169,7 @@ class ReglaPuntos(Base):
         default=Decimal("80.00"),
         server_default=text("80"),
     )
-    descripcion_regla: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    descripcion_regla: Mapped[str | None] = mapped_column(Text, nullable=True)
     activa: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -179,7 +184,7 @@ class ReglaPuntos(Base):
         server_default=func.now(),
     )
 
-    solicitudes: Mapped[list["Solicitud"]] = relationship(back_populates="regla_puntos")
+    solicitudes: Mapped[list[Solicitud]] = relationship(back_populates="regla_puntos")
 
 
 class Solicitud(Base):
@@ -229,36 +234,40 @@ class Solicitud(Base):
         nullable=False,
     )
     flujo: Mapped[str] = mapped_column(String(20), nullable=False)
-    subtipo_material: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    cantidad_estimada_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
-    cantidad_real_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    subtipo_material: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cantidad_estimada_kg: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 2), nullable=True
+    )
+    cantidad_real_kg: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 2), nullable=True
+    )
     disponibilidad_usuario: Mapped[str] = mapped_column(String(120), nullable=False)
-    observaciones: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
     estado: Mapped[str] = mapped_column(
         String(25),
         nullable=False,
         default="RECIBIDA",
         server_default=text("'RECIBIDA'"),
     )
-    coordinador_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    coordinador_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("usuarios.id"),
         nullable=True,
     )
-    recolector_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    recolector_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("usuarios.id"),
         nullable=True,
     )
-    fecha_programada: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    hora_programada: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    fecha_programada: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hora_programada: Mapped[time | None] = mapped_column(Time, nullable=True)
     puntos_otorgados: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
         default=Decimal("0.00"),
         server_default=text("0"),
     )
-    regla_puntos_id: Mapped[Optional[int]] = mapped_column(
+    regla_puntos_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("reglas_puntos.id", ondelete="RESTRICT"),
         nullable=True,
@@ -277,28 +286,28 @@ class Solicitud(Base):
         server_default=func.now(),
     )
 
-    solicitante: Mapped["Usuario"] = relationship(
+    solicitante: Mapped[Usuario] = relationship(
         back_populates="solicitudes_creadas",
         foreign_keys=[solicitante_id],
     )
-    coordinador: Mapped[Optional["Usuario"]] = relationship(
+    coordinador: Mapped[Usuario | None] = relationship(
         back_populates="solicitudes_coordinadas",
         foreign_keys=[coordinador_id],
     )
-    recolector: Mapped[Optional["Usuario"]] = relationship(
+    recolector: Mapped[Usuario | None] = relationship(
         back_populates="solicitudes_asignadas",
         foreign_keys=[recolector_id],
     )
-    regla_puntos: Mapped[Optional["ReglaPuntos"]] = relationship(
+    regla_puntos: Mapped[ReglaPuntos | None] = relationship(
         back_populates="solicitudes",
         foreign_keys=[regla_puntos_id],
     )
-    historial_estados: Mapped[list["HistorialEstado"]] = relationship(
+    historial_estados: Mapped[list[HistorialEstado]] = relationship(
         back_populates="solicitud",
         cascade="all, delete-orphan",
         order_by="HistorialEstado.fecha_cambio, HistorialEstado.id",
     )
-    mensajes_whatsapp: Mapped[list["MensajeWhatsapp"]] = relationship(
+    mensajes_whatsapp: Mapped[list[MensajeWhatsapp]] = relationship(
         back_populates="solicitud",
     )
 
@@ -312,7 +321,9 @@ class HistorialEstado(Base):
             f"estado_anterior IS NULL OR {_sql_in('estado_anterior', ESTADOS_SOLICITUD)}",
             name="estado_anterior_valido",
         ),
-        CheckConstraint(_sql_in("estado_nuevo", ESTADOS_SOLICITUD), name="estado_nuevo_valido"),
+        CheckConstraint(
+            _sql_in("estado_nuevo", ESTADOS_SOLICITUD), name="estado_nuevo_valido"
+        ),
         Index("ix_historial_estados_solicitud_fecha", "solicitud_id", "fecha_cambio"),
         Index("ix_historial_estados_cambiado_por", "cambiado_por"),
     )
@@ -323,14 +334,14 @@ class HistorialEstado(Base):
         ForeignKey("solicitudes.id", ondelete="CASCADE"),
         nullable=False,
     )
-    estado_anterior: Mapped[Optional[str]] = mapped_column(String(25), nullable=True)
+    estado_anterior: Mapped[str | None] = mapped_column(String(25), nullable=True)
     estado_nuevo: Mapped[str] = mapped_column(String(25), nullable=False)
-    cambiado_por: Mapped[Optional[uuid.UUID]] = mapped_column(
+    cambiado_por: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,
     )
-    nota_operativa: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    nota_operativa: Mapped[str | None] = mapped_column(Text, nullable=True)
     fecha_cambio: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -338,8 +349,8 @@ class HistorialEstado(Base):
         server_default=func.now(),
     )
 
-    solicitud: Mapped["Solicitud"] = relationship(back_populates="historial_estados")
-    actor: Mapped[Optional["Usuario"]] = relationship(foreign_keys=[cambiado_por])
+    solicitud: Mapped[Solicitud] = relationship(back_populates="historial_estados")
+    actor: Mapped[Usuario | None] = relationship(foreign_keys=[cambiado_por])
 
 
 class MensajeWhatsapp(Base):
@@ -347,13 +358,18 @@ class MensajeWhatsapp(Base):
 
     __tablename__ = "mensajes_whatsapp"
     __table_args__ = (
-        CheckConstraint(_sql_in("direccion", DIRECCIONES_MENSAJE), name="direccion_valida"),
+        CheckConstraint(
+            _sql_in("direccion", DIRECCIONES_MENSAJE), name="direccion_valida"
+        ),
         Index("ix_mensajes_whatsapp_solicitud_id", "solicitud_id"),
-        Index("ix_mensajes_whatsapp_telefono_creado", "telefono_remitente", "creado_en"),
+        Index(
+            "ix_mensajes_whatsapp_telefono_creado", "telefono_remitente", "creado_en"
+        ),
+        Index("uq_mensajes_whatsapp_wa_message_id", "wa_message_id", unique=True),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    solicitud_id: Mapped[Optional[int]] = mapped_column(
+    solicitud_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("solicitudes.id", ondelete="SET NULL"),
         nullable=True,
@@ -361,7 +377,7 @@ class MensajeWhatsapp(Base):
     telefono_remitente: Mapped[str] = mapped_column(String(25), nullable=False)
     direccion: Mapped[str] = mapped_column(String(15), nullable=False)
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
-    intencion_ia: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    intencion_ia: Mapped[str | None] = mapped_column(String(50), nullable=True)
     procesado_por_ia: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -374,8 +390,30 @@ class MensajeWhatsapp(Base):
         default=_utcnow,
         server_default=func.now(),
     )
+    wa_message_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    estado_envio: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="PENDIENTE",
+        server_default=text("'PENDIENTE'"),
+    )
+    intentos: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    procesado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    estado_conversacion: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    borrador_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    media_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    media_tipo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    media_mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    texto_extraido: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    solicitud: Mapped[Optional["Solicitud"]] = relationship(back_populates="mensajes_whatsapp")
+    solicitud: Mapped[Solicitud | None] = relationship(
+        back_populates="mensajes_whatsapp"
+    )
 
 
 class ContenidoEducativo(Base):
@@ -383,8 +421,12 @@ class ContenidoEducativo(Base):
 
     __tablename__ = "contenidos_educativos"
     __table_args__ = (
-        CheckConstraint(_sql_in("categoria", CATEGORIAS_CONTENIDO), name="categoria_valida"),
-        UniqueConstraint("categoria", "titulo", name="uq_contenidos_educativos_categoria_titulo"),
+        CheckConstraint(
+            _sql_in("categoria", CATEGORIAS_CONTENIDO), name="categoria_valida"
+        ),
+        UniqueConstraint(
+            "categoria", "titulo", name="uq_contenidos_educativos_categoria_titulo"
+        ),
         Index("ix_contenidos_educativos_categoria_orden", "categoria", "orden"),
     )
 
@@ -392,8 +434,8 @@ class ContenidoEducativo(Base):
     titulo: Mapped[str] = mapped_column(String(150), nullable=False)
     categoria: Mapped[str] = mapped_column(String(30), nullable=False)
     resumen: Mapped[str] = mapped_column(Text, nullable=False)
-    que_si_va: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    que_no_va: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    que_si_va: Mapped[str | None] = mapped_column(Text, nullable=True)
+    que_no_va: Mapped[str | None] = mapped_column(Text, nullable=True)
     orden: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -409,17 +451,17 @@ class ContenidoEducativo(Base):
 
 
 __all__ = [
-    "Base",
     "CATEGORIAS_CONTENIDO",
-    "ContenidoEducativo",
     "DIRECCIONES_MENSAJE",
     "ESTADOS_SOLICITUD",
     "FLUJOS_RESIDUO",
+    "ROLES_USUARIO",
+    "TIPOS_GENERADOR",
+    "Base",
+    "ContenidoEducativo",
     "HistorialEstado",
     "MensajeWhatsapp",
-    "ROLES_USUARIO",
     "ReglaPuntos",
     "Solicitud",
-    "TIPOS_GENERADOR",
     "Usuario",
 ]

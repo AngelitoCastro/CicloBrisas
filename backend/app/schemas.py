@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -47,7 +47,7 @@ def _serializar_fecha_hora(valor: datetime | None) -> str | None:
     if valor is None:
         return None
     if valor.tzinfo is None:
-        valor = valor.replace(tzinfo=timezone.utc)
+        valor = valor.replace(tzinfo=UTC)
     return valor.isoformat()
 
 
@@ -62,7 +62,9 @@ class ModeloSalida(BaseModel):
 
 class LoginRequest(BaseModel):
     telefono: str = Field(min_length=7, max_length=25, examples=["+573000000108"])
-    password: str = Field(min_length=1, max_length=128, examples=["clave-de-demostracion"])
+    password: str = Field(
+        min_length=1, max_length=128, examples=["clave-de-demostracion"]
+    )
 
     @field_validator("telefono")
     @classmethod
@@ -348,7 +350,9 @@ class ReglaPuntosResponse(ModeloSalida):
 class ReglaPuntosCrear(BaseModel):
     flujo: FlujoResiduo
     tipo_generador: TipoGenerador
-    puntos_base_solicitud: Decimal = Field(ge=0, le=100_000, max_digits=10, decimal_places=2)
+    puntos_base_solicitud: Decimal = Field(
+        ge=0, le=100_000, max_digits=10, decimal_places=2
+    )
     puntos_por_kg: Decimal = Field(ge=0, le=100_000, max_digits=10, decimal_places=2)
     valor_referencia_kg_cop: Decimal = Field(
         ge=0,
@@ -400,7 +404,7 @@ class ReglaPuntosActualizar(BaseModel):
     activa: bool | None = None
 
     @model_validator(mode="after")
-    def _al_menos_un_campo(self) -> "ReglaPuntosActualizar":
+    def _al_menos_un_campo(self) -> ReglaPuntosActualizar:
         if not self.model_fields_set:
             raise ValueError("Debe indicar al menos un campo para actualizar.")
         return self

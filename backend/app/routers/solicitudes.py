@@ -42,14 +42,24 @@ from app.services.solicitudes import (
 router = APIRouter()
 
 RESPUESTAS_COMUNES = {
-    401: {"model": ErrorRespuesta, "description": "Token ausente, inválido o expirado."},
+    401: {
+        "model": ErrorRespuesta,
+        "description": "Token ausente, inválido o expirado.",
+    },
     403: {"model": ErrorRespuesta, "description": "Rol o flujo no autorizado."},
-    404: {"model": ErrorRespuesta, "description": "Solicitud no visible o inexistente."},
+    404: {
+        "model": ErrorRespuesta,
+        "description": "Solicitud no visible o inexistente.",
+    },
     409: {"model": ErrorRespuesta, "description": "Conflicto de estado o de datos."},
     422: {"model": ErrorRespuesta, "description": "Datos de entrada inválidos."},
 }
 
-SolicitudId = Annotated[int, Path(ge=1, description="Identificador interno de la solicitud.")]
+SolicitudId = Annotated[
+    int, Path(ge=1, description="Identificador interno de la solicitud.")
+]
+FlujoFiltro = Annotated[FlujoResiduo | None, Query()]
+EstadoFiltro = Annotated[EstadoSolicitud | None, Query()]
 
 
 @router.post(
@@ -77,8 +87,8 @@ def crear(
 def listar(
     usuario: UsuarioActual,
     db: SesionDB,
-    flujo: FlujoResiduo | None = Query(default=None),
-    estado: EstadoSolicitud | None = Query(default=None),
+    flujo: FlujoFiltro = None,
+    estado: EstadoFiltro = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SolicitudListResponse:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20261120_0001"
@@ -61,7 +62,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_usuarios"),
         sa.UniqueConstraint("telefono", name="uq_usuarios_telefono"),
     )
-    op.create_index("ix_usuarios_rol_activo", "usuarios", ["rol", "activo"], unique=False)
+    op.create_index(
+        "ix_usuarios_rol_activo", "usuarios", ["rol", "activo"], unique=False
+    )
     op.create_index("ix_usuarios_es_piloto", "usuarios", ["es_piloto"], unique=False)
 
     op.create_table(
@@ -132,7 +135,9 @@ def upgrade() -> None:
         sa.Column("solicitante_id", sa.Uuid(as_uuid=True), nullable=False),
         sa.Column("flujo", sa.String(length=20), nullable=False),
         sa.Column("subtipo_material", sa.String(length=100), nullable=True),
-        sa.Column("cantidad_estimada_kg", sa.Numeric(precision=8, scale=2), nullable=True),
+        sa.Column(
+            "cantidad_estimada_kg", sa.Numeric(precision=8, scale=2), nullable=True
+        ),
         sa.Column("cantidad_real_kg", sa.Numeric(precision=8, scale=2), nullable=True),
         sa.Column("disponibilidad_usuario", sa.String(length=120), nullable=False),
         sa.Column("observaciones", sa.Text(), nullable=True),
@@ -224,7 +229,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_solicitudes"),
         sa.UniqueConstraint("codigo_publico", name="uq_solicitudes_codigo_publico"),
     )
-    op.create_index("ix_solicitudes_flujo_estado", "solicitudes", ["flujo", "estado"], unique=False)
+    op.create_index(
+        "ix_solicitudes_flujo_estado", "solicitudes", ["flujo", "estado"], unique=False
+    )
     op.create_index(
         "ix_solicitudes_solicitante_creado",
         "solicitudes",
@@ -237,12 +244,20 @@ def upgrade() -> None:
         ["recolector_id", "estado"],
         unique=False,
     )
-    op.create_index("ix_solicitudes_coordinador_id", "solicitudes", ["coordinador_id"], unique=False)
     op.create_index(
-        "ix_solicitudes_fecha_programada", "solicitudes", ["fecha_programada"], unique=False
+        "ix_solicitudes_coordinador_id", "solicitudes", ["coordinador_id"], unique=False
     )
     op.create_index(
-        "ix_solicitudes_regla_puntos_id", "solicitudes", ["regla_puntos_id"], unique=False
+        "ix_solicitudes_fecha_programada",
+        "solicitudes",
+        ["fecha_programada"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_solicitudes_regla_puntos_id",
+        "solicitudes",
+        ["regla_puntos_id"],
+        unique=False,
     )
 
     op.create_table(
@@ -304,7 +319,9 @@ def upgrade() -> None:
         sa.Column("direccion", sa.String(length=15), nullable=False),
         sa.Column("contenido", sa.Text(), nullable=False),
         sa.Column("intencion_ia", sa.String(length=50), nullable=True),
-        sa.Column("procesado_por_ia", sa.Boolean(), server_default=sa.false(), nullable=False),
+        sa.Column(
+            "procesado_por_ia", sa.Boolean(), server_default=sa.false(), nullable=False
+        ),
         sa.Column(
             "creado_en",
             sa.DateTime(timezone=True),
@@ -324,7 +341,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_mensajes_whatsapp"),
     )
     op.create_index(
-        "ix_mensajes_whatsapp_solicitud_id", "mensajes_whatsapp", ["solicitud_id"], unique=False
+        "ix_mensajes_whatsapp_solicitud_id",
+        "mensajes_whatsapp",
+        ["solicitud_id"],
+        unique=False,
     )
     op.create_index(
         "ix_mensajes_whatsapp_telefono_creado",
@@ -363,15 +383,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_contenidos_educativos_categoria_orden", table_name="contenidos_educativos")
+    op.drop_index(
+        "ix_contenidos_educativos_categoria_orden", table_name="contenidos_educativos"
+    )
     op.drop_table("contenidos_educativos")
 
-    op.drop_index("ix_mensajes_whatsapp_telefono_creado", table_name="mensajes_whatsapp")
+    op.drop_index(
+        "ix_mensajes_whatsapp_telefono_creado", table_name="mensajes_whatsapp"
+    )
     op.drop_index("ix_mensajes_whatsapp_solicitud_id", table_name="mensajes_whatsapp")
     op.drop_table("mensajes_whatsapp")
 
     op.drop_index("ix_historial_estados_cambiado_por", table_name="historial_estados")
-    op.drop_index("ix_historial_estados_solicitud_fecha", table_name="historial_estados")
+    op.drop_index(
+        "ix_historial_estados_solicitud_fecha", table_name="historial_estados"
+    )
     op.drop_table("historial_estados")
 
     op.drop_index("ix_solicitudes_regla_puntos_id", table_name="solicitudes")

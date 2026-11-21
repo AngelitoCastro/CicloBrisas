@@ -54,17 +54,10 @@ def construir_solicitud_response(
     es_propietario = solicitud.solicitante_id == observador.id
     es_coordinador = observador.rol == COORDINADOR_POR_FLUJO.get(solicitud.flujo)
     es_recolector_asignado = (
-        solicitud.recolector_id is not None
-        and solicitud.recolector_id == observador.id
+        solicitud.recolector_id is not None and solicitud.recolector_id == observador.id
     )
-    incluir_contacto = (
-        not ocultar_contacto
-        and (
-            es_admin
-            or es_propietario
-            or es_coordinador
-            or es_recolector_asignado
-        )
+    incluir_contacto = not ocultar_contacto and (
+        es_admin or es_propietario or es_coordinador or es_recolector_asignado
     )
 
     return SolicitudPublicaResponse(

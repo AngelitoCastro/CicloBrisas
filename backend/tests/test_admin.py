@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from app.models import Usuario
 from tests.conftest import usuario_por_rol
 
 
@@ -11,19 +10,24 @@ def test_solo_admin_puede_gestionar_reglas_y_piloto(client, db, login, telefono)
     headers_coord = login(telefono["COORD_HUERTEROS"])
 
     for headers in (headers_externo, headers_coord):
-        assert client.get("/api/admin/reglas-puntos", headers=headers).status_code == 403
+        assert (
+            client.get("/api/admin/reglas-puntos", headers=headers).status_code == 403
+        )
         assert client.get("/api/admin/usuarios", headers=headers).status_code == 403
-        assert client.post(
-            "/api/admin/reglas-puntos",
-            json={
-                "flujo": "ORGANICO",
-                "tipo_generador": "HOGAR",
-                "puntos_base_solicitud": 1,
-                "puntos_por_kg": 1,
-                "valor_referencia_kg_cop": 1,
-            },
-            headers=headers,
-        ).status_code == 403
+        assert (
+            client.post(
+                "/api/admin/reglas-puntos",
+                json={
+                    "flujo": "ORGANICO",
+                    "tipo_generador": "HOGAR",
+                    "puntos_base_solicitud": 1,
+                    "puntos_por_kg": 1,
+                    "valor_referencia_kg_cop": 1,
+                },
+                headers=headers,
+            ).status_code
+            == 403
+        )
 
     usuario = usuario_por_rol(db, "HOGAR", telefono["HOGAR"])
     respuesta = client.patch(
@@ -138,10 +142,13 @@ def test_modo_piloto_solo_aplica_a_cuentas_externas(client, db, login, telefono)
     assert respuesta.status_code == 200, respuesta.text
     assert respuesta.json()["es_piloto"] is False
     # RN-08: la etiqueta no restringe el acceso.
-    assert client.post(
-        "/api/auth/login",
-        json={"telefono": telefono["HOGAR"], "password": "PruebaHTTP2026!"},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"telefono": telefono["HOGAR"], "password": "PruebaHTTP2026!"},
+        ).status_code
+        == 200
+    )
 
     listado = client.get(
         "/api/admin/usuarios",
@@ -195,15 +202,18 @@ def test_regla_nueva_aplica_a_cierres_posteriores(client, db, login, telefono):
         headers=headers_hogar,
     ).json()
     huertero = usuario_por_rol(db, "HUERTERO", telefono["HUERTERO"])
-    assert client.patch(
-        f"/api/solicitudes/{solicitud['id']}/programar",
-        json={
-            "recolector_id": str(huertero.id),
-            "fecha_programada": "2099-01-01",
-            "hora_programada": "09:00",
-        },
-        headers=login(telefono["COORD_HUERTEROS"]),
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/api/solicitudes/{solicitud['id']}/programar",
+            json={
+                "recolector_id": str(huertero.id),
+                "fecha_programada": "2099-01-01",
+                "hora_programada": "09:00",
+            },
+            headers=login(telefono["COORD_HUERTEROS"]),
+        ).status_code
+        == 200
+    )
 
     cierre = client.post(
         f"/api/solicitudes/{solicitud['id']}/cerrar",

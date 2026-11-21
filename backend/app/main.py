@@ -13,11 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
-from app.routers import admin, auth, catalogos, solicitudes
+from app.routers import admin, auth, catalogos, solicitudes, whatsapp
 from app.schemas import HealthResponse
+from app.services import eventos
 from app.services.errors import ErrorDominio
+from app.whatsapp.notificaciones import manejar_evento
 
 logger = logging.getLogger("ecoconecta.api")
+eventos.suscribir(manejar_evento)
 
 
 def _detalle_error(codigo: str, mensaje: str, **extra: Any) -> dict[str, Any]:
@@ -39,11 +42,30 @@ def crear_app() -> FastAPI:
             "coordinador del flujo, al recolector asignado y al administrador (RN-07)."
         ),
         openapi_tags=[
-            {"name": "Autenticación", "description": "Login con bcrypt y JWT; consulta de la cuenta."},
-            {"name": "Solicitudes", "description": "Alta, consulta, programación, historial y cierre."},
-            {"name": "Catálogo", "description": "Reglas de puntos activas para mostrar al usuario."},
-            {"name": "Administración", "description": "Reglas de puntos y modo piloto (solo ADMIN)."},
-            {"name": "Salud", "description": "Verificación de disponibilidad de la API."},
+            {
+                "name": "Autenticación",
+                "description": "Login con bcrypt y JWT; consulta de la cuenta.",
+            },
+            {
+                "name": "Solicitudes",
+                "description": "Alta, consulta, programación, historial y cierre.",
+            },
+            {
+                "name": "Catálogo",
+                "description": "Reglas de puntos activas para mostrar al usuario.",
+            },
+            {
+                "name": "Administración",
+                "description": "Reglas de puntos y modo piloto (solo ADMIN).",
+            },
+            {
+                "name": "WhatsApp",
+                "description": "Webhook firmado de WhatsApp con Twilio y asistente OpenAI o Azure OpenAI.",
+            },
+            {
+                "name": "Salud",
+                "description": "Verificación de disponibilidad de la API.",
+            },
         ],
     )
 
@@ -56,9 +78,12 @@ def crear_app() -> FastAPI:
     )
 
     app.include_router(auth.router, prefix="/api/auth", tags=["Autenticación"])
-    app.include_router(solicitudes.router, prefix="/api/solicitudes", tags=["Solicitudes"])
+    app.include_router(
+        solicitudes.router, prefix="/api/solicitudes", tags=["Solicitudes"]
+    )
     app.include_router(catalogos.router, prefix="/api", tags=["Catálogo"])
     app.include_router(admin.router, prefix="/api/admin", tags=["Administración"])
+    app.include_router(whatsapp.router)
 
     @app.get("/health", response_model=HealthResponse, tags=["Salud"])
     def health() -> HealthResponse:
@@ -125,7 +150,9 @@ def crear_app() -> FastAPI:
     ) -> JSONResponse:
         del request
         # No se registra el detalle SQL para no filtrar datos personales.
-        logger.warning("Conflicto de integridad en base de datos: %s", type(exc).__name__)
+        logger.warning(
+            "Conflicto de integridad en base de datos: %s", type(exc).__name__
+        )
         return JSONResponse(
             status_code=409,
             content=_detalle_error(
@@ -157,7 +184,9 @@ def crear_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def manejar_inesperado(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Error no controlado en %s %s", request.method, request.url.path)
+        logger.exception(
+            "Error no controlado en %s %s", request.method, request.url.path
+        )
         return JSONResponse(
             status_code=500,
             content=_detalle_error(

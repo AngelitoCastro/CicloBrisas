@@ -35,9 +35,16 @@ from app.services.usuarios import cambiar_modo_piloto, listar_usuarios_admin
 router = APIRouter()
 
 AdminActual = Annotated[Usuario, Depends(require_roles("ADMIN"))]
+FlujoFiltro = Annotated[FlujoResiduo | None, Query()]
+TipoGeneradorFiltro = Annotated[TipoGenerador | None, Query()]
+RolFiltro = Annotated[RolUsuario | None, Query()]
+BooleanoFiltro = Annotated[bool | None, Query()]
 
 RESPUESTAS_ADMIN = {
-    401: {"model": ErrorRespuesta, "description": "Token ausente, inválido o expirado."},
+    401: {
+        "model": ErrorRespuesta,
+        "description": "Token ausente, inválido o expirado.",
+    },
     403: {"model": ErrorRespuesta, "description": "Se requiere rol ADMIN."},
     404: {"model": ErrorRespuesta, "description": "Recurso inexistente."},
     409: {"model": ErrorRespuesta, "description": "Conflicto con una regla activa."},
@@ -54,9 +61,9 @@ RESPUESTAS_ADMIN = {
 def listar_reglas(
     admin: AdminActual,
     db: SesionDB,
-    flujo: FlujoResiduo | None = Query(default=None),
-    tipo_generador: TipoGenerador | None = Query(default=None),
-    activa: bool | None = Query(default=None),
+    flujo: FlujoFiltro = None,
+    tipo_generador: TipoGeneradorFiltro = None,
+    activa: BooleanoFiltro = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ReglaPuntosResponse]:
@@ -112,9 +119,9 @@ def actualizar_regla_puntos(
 def listar_usuarios(
     admin: AdminActual,
     db: SesionDB,
-    rol: RolUsuario | None = Query(default=None),
-    es_piloto: bool | None = Query(default=None),
-    activo: bool | None = Query(default=None),
+    rol: RolFiltro = None,
+    es_piloto: BooleanoFiltro = None,
+    activo: BooleanoFiltro = None,
     q: Annotated[str | None, Query(max_length=80)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
