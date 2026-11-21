@@ -14,12 +14,12 @@ import pytest
 from alembic.config import Config
 from sqlalchemy import func, inspect, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
+import app.db as app_db
 from app.db import (
-    SessionLocal,
     create_db_engine,
-    engine,
     get_db,
     normalize_database_url,
 )
@@ -82,26 +82,46 @@ def database_url() -> str:
     return url
 
 
+@pytest.fixture(scope="module")
+def pg_engine(database_url: str):
+    eng = create_db_engine(database_url)
+    yield eng
+    eng.dispose()
+
+
 @pytest.fixture()
-def migrated_db(database_url: str) -> str:
+def pg_session_factory(pg_engine):
+    return sessionmaker(
+        bind=pg_engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
+
+
+@pytest.fixture()
+def migrated_db(database_url: str, pg_engine) -> str:
     """Reinicia el esquema desde base hasta head antes de cada prueba."""
-    engine.dispose()
+    pg_engine.dispose()
     cfg = _alembic_config(database_url)
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
     yield database_url
-    engine.dispose()
+    pg_engine.dispose()
 
 
-def test_alembic_upgrade_downgrade_upgrade_reproducible(database_url: str) -> None:
+def test_alembic_upgrade_downgrade_upgrade_reproducible(
+    database_url: str, pg_engine
+) -> None:
     """Verifica que las migraciones crean, revierten y recrean tablas e índices esperados."""
-    engine.dispose()
+    pg_engine.dispose()
     cfg = _alembic_config(database_url)
 
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
 
-    inspector = inspect(engine)
+    inspector = inspect(pg_engine)
     tables = set(inspector.get_table_names())
     assert {
         "usuarios",
@@ -109,9 +129,17 @@ def test_alembic_upgrade_downgrade_upgrade_reproducible(database_url: str) -> No
         "solicitudes",
         "historial_estados",
         "mensajes_whatsapp",
+        "avisos_whatsapp",
+        "consentimientos_whatsapp",
         "contenidos_educativos",
         "alembic_version",
     }.issubset(tables)
+
+    msg_cols = {col["name"] for col in inspector.get_columns("mensajes_whatsapp")}
+    assert {"proveedor", "proximo_intento_en"}.issubset(msg_cols)
+
+    aviso_cols = {col["name"] for col in inspector.get_columns("avisos_whatsapp")}
+    assert {"proveedor", "plantilla", "actualizado_en"}.issubset(aviso_cols)
 
     usuario_cols = {col["name"] for col in inspector.get_columns("usuarios")}
     assert "password_hash" in usuario_cols
@@ -135,17 +163,19 @@ def test_alembic_upgrade_downgrade_upgrade_reproducible(database_url: str) -> No
 
     # Reversibilidad y reaplicación limpia
     command.downgrade(cfg, "base")
-    remaining = set(inspect(engine).get_table_names())
+    remaining = set(inspect(pg_engine).get_table_names())
     assert "usuarios" not in remaining
     assert "solicitudes" not in remaining
 
     command.upgrade(cfg, "head")
-    assert "usuarios" in set(inspect(engine).get_table_names())
+    assert "usuarios" in set(inspect(pg_engine).get_table_names())
 
 
-def test_seed_is_idempotent_on_two_runs(migrated_db: str) -> None:
+def test_seed_is_idempotent_on_two_runs(
+    migrated_db: str, pg_session_factory
+) -> None:
     """Ejecutar la semilla dos veces no duplica registros ni borra puntos acumulados."""
-    with SessionLocal() as session:
+    with pg_session_factory() as session:
         first = run_seed(session, default_password=TEST_SEED_PASSWORD, env={})
         assert first.usuarios_creados == len(USUARIOS_PILOTO)
         assert first.reglas_creadas == len(REGLAS_PUNTOS_INICIALES)
@@ -204,7 +234,9 @@ def test_seed_is_idempotent_on_two_runs(migrated_db: str) -> None:
         assert regla_org_hogar.puntos_por_kg == Decimal("7.50")
 
 
-def test_seed_cli_runs_twice_successfully(migrated_db: str) -> None:
+def test_seed_cli_runs_twice_successfully(
+    migrated_db: str, pg_session_factory
+) -> None:
     """Verifica que tanto `python -m app.seed` como `python app/seed.py` corren dos veces sin duplicar."""
     env = os.environ.copy()
     env["DATABASE_URL"] = migrated_db
@@ -230,7 +262,7 @@ def test_seed_cli_runs_twice_successfully(migrated_db: str) -> None:
     )
     assert run_script.returncode == 0, run_script.stderr
 
-    with SessionLocal() as session:
+    with pg_session_factory() as session:
         assert session.scalar(select(func.count(Usuario.id))) == len(USUARIOS_PILOTO)
         assert session.scalar(select(func.count(ReglaPuntos.id))) == len(
             REGLAS_PUNTOS_INICIALES
@@ -240,8 +272,11 @@ def test_seed_cli_runs_twice_successfully(migrated_db: str) -> None:
         )
 
 
-def test_get_db_lifecycle_and_constraints(migrated_db: str) -> None:
+def test_get_db_lifecycle_and_constraints(
+    migrated_db: str, pg_session_factory, monkeypatch
+) -> None:
     """Valida get_db(), relaciones ORM y constraints críticos de dominio en PostgreSQL."""
+    monkeypatch.setattr(app_db, "SessionLocal", pg_session_factory)
     db_gen = get_db()
     session = next(db_gen)
     try:

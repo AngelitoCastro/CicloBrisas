@@ -15,7 +15,14 @@ npm run dev
 
 Abrir la URL que muestre Vite (normalmente `http://localhost:5173`). Para comprobar tipos y compilar: `npm run build`.
 
-Desde la raíz del repositorio, `docker compose up --build` levanta PostgreSQL, la API en `:8000` y este dev server en `:5173`. La API acepta ese origen por CORS y la URL base se configura con `VITE_API_URL` (por defecto `http://localhost:8000`). El prototipo aún persiste en `localStorage` y no consume la API.
+Desde la raíz del repositorio, `docker compose up --build` levanta PostgreSQL, la API en `:8000`, el despachador de WhatsApp (`avisos`) y este dev server en `:5173`. La API acepta ese origen por CORS y la URL base se configura con `VITE_API_URL` (por defecto `http://localhost:8000`).
+
+### Autenticación y paneles conectados a FastAPI
+
+- La pantalla de acceso inicia sesión contra `POST /api/auth/login` (teléfono y contraseña) y carga solicitudes (`GET /api/solicitudes`), recolectores compatibles (`GET /api/recolectores`) y reglas activas (`GET /api/reglas-puntos`) según el rol autenticado (`COORD_HUERTEROS`, `COORD_RECICLADORES` o `ADMIN`).
+- El acceso rápido de demostración permanece **desactivado por defecto** (`VITE_ENABLE_DEMO_LOGIN=false`); solo debe habilitarse localmente junto con `ENTORNO=development`.
+- En **Por programar** aparecen las solicitudes recibidas por WhatsApp Meta o portal con **material, peso estimado, referencia y notas editables**. Al pulsar **Validar y notificar al recolector**, `PATCH /api/solicitudes/{id}/programar` guarda datos revisados, recolector compatible, fecha, hora, historial y avisos en una sola transacción.
+- En **Programadas** se muestran por separado la **Programación guardada** y el **Estado del aviso WhatsApp** (`GET /api/solicitudes/{id}/avisos`), permitiendo reintentar solo fallos confirmados (`FALLIDO`) y esperando conciliación cuando un envío está en `CONCILIAR`. El cierre manual de respaldo llama a `POST /api/solicitudes/{id}/cerrar` con acreditación única de EcoPuntos.
 
 Desde la pantalla de acceso, **Ver recorrido por WhatsApp** abre una demostración con datos ficticios. Elige Huerta o Reciclaje. Como **Habitante**, solicita la recolección. Como **Coordinador**, apruébala y programa la visita. En **Recolector**, envía la respuesta simulada con el código y peso. Vuelve a **Habitante** para ver el cierre y consultar el saldo. La demo comparte la solicitud entre vistas y guarda su progreso por separado durante la sesión del navegador.
 

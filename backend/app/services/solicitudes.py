@@ -122,6 +122,7 @@ def solicitud_activa_del_solicitante(
             selectinload(Solicitud.solicitante),
             selectinload(Solicitud.coordinador),
             selectinload(Solicitud.recolector),
+            selectinload(Solicitud.mensajes_whatsapp),
         )
         .limit(1)
     )
@@ -133,7 +134,11 @@ def _cargar_solicitud(
     *,
     bloquear: bool = False,
 ) -> Solicitud:
-    stmt = select(Solicitud).where(Solicitud.id == solicitud_id)
+    stmt = (
+        select(Solicitud)
+        .where(Solicitud.id == solicitud_id)
+        .options(selectinload(Solicitud.mensajes_whatsapp))
+    )
     if bloquear:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
     solicitud = db.scalars(stmt).first()
@@ -240,6 +245,8 @@ def crear_solicitud(
     db: Session,
     solicitante: Usuario,
     datos: SolicitudCrear,
+    *,
+    commit: bool = True,
 ) -> Solicitud:
     """Crea una solicitud RECIBIDA y enruta su flujo (RN-01)."""
     if solicitante.rol not in TIPO_GENERADOR_POR_ROL:
@@ -275,18 +282,24 @@ def crear_solicitud(
             actor_id=solicitante.id,
             nota=f"Solicitud creada para el flujo {datos.flujo}.",
         )
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     except IntegrityError as exc:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise Conflicto(
             "CONFLICTO_CREACION",
             "No fue posible crear la solicitud por un conflicto de datos.",
         ) from exc
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
 
-    db.refresh(solicitud)
+    if commit:
+        db.refresh(solicitud)
     return solicitud
 
 
@@ -337,6 +350,7 @@ def listar_solicitudes(
             selectinload(Solicitud.solicitante),
             selectinload(Solicitud.coordinador),
             selectinload(Solicitud.recolector),
+            selectinload(Solicitud.mensajes_whatsapp),
         )
         .order_by(Solicitud.creado_en.desc(), Solicitud.id.desc())
         .limit(limit)
@@ -437,8 +451,38 @@ def programar_solicitud(
     _validar_fecha_hora_programada(datos.fecha_programada, datos.hora_programada)
     recolector = _validar_recolector(db, datos.recolector_id, solicitud.flujo)
 
-    if (solicitud.estado == "PROGRAMADA" and solicitud.recolector_id == recolector.id
-            and solicitud.fecha_programada == datos.fecha_programada and solicitud.hora_programada == datos.hora_programada):
+    campos = datos.model_fields_set
+    nuevo_material = (
+        datos.subtipo_material
+        if "subtipo_material" in campos
+        else solicitud.subtipo_material
+    )
+    nueva_cantidad = (
+        datos.cantidad_estimada_kg
+        if "cantidad_estimada_kg" in campos
+        else solicitud.cantidad_estimada_kg
+    )
+    nueva_disponibilidad = (
+        datos.disponibilidad_usuario
+        if "disponibilidad_usuario" in campos and datos.disponibilidad_usuario is not None
+        else solicitud.disponibilidad_usuario
+    )
+    nuevas_observaciones = (
+        datos.observaciones
+        if "observaciones" in campos
+        else solicitud.observaciones
+    )
+
+    if (
+        solicitud.estado == "PROGRAMADA"
+        and solicitud.recolector_id == recolector.id
+        and solicitud.fecha_programada == datos.fecha_programada
+        and solicitud.hora_programada == datos.hora_programada
+        and solicitud.subtipo_material == nuevo_material
+        and solicitud.cantidad_estimada_kg == nueva_cantidad
+        and solicitud.disponibilidad_usuario == nueva_disponibilidad
+        and solicitud.observaciones == nuevas_observaciones
+    ):
         return solicitud
     anterior = solicitud.estado
     solicitud.estado = "PROGRAMADA"
@@ -446,6 +490,10 @@ def programar_solicitud(
     solicitud.recolector_id = recolector.id
     solicitud.fecha_programada = datos.fecha_programada
     solicitud.hora_programada = datos.hora_programada
+    solicitud.subtipo_material = nuevo_material
+    solicitud.cantidad_estimada_kg = nueva_cantidad
+    solicitud.disponibilidad_usuario = nueva_disponibilidad
+    solicitud.observaciones = nuevas_observaciones
     accion = "Reprogramada" if anterior == "PROGRAMADA" else "Programada"
     historial = _registrar_historial(
         db,
@@ -732,6 +780,7 @@ def buscar_solicitud_por_codigo(db: Session, codigo_publico: str) -> Solicitud:
             selectinload(Solicitud.solicitante),
             selectinload(Solicitud.coordinador),
             selectinload(Solicitud.recolector),
+            selectinload(Solicitud.mensajes_whatsapp),
         )
     )
     if solicitud is None:

@@ -13,6 +13,8 @@ from app.presenters import (
     construir_usuario_response,
 )
 from app.schemas import (
+    ConsentimientoWhatsAppResponse,
+    ConsentimientoWhatsAppUpdate,
     ErrorRespuesta,
     FlujoResiduo,
     PilotoUpdate,
@@ -31,6 +33,7 @@ from app.services.reglas import (
     listar_reglas_admin,
 )
 from app.services.usuarios import cambiar_modo_piloto, listar_usuarios_admin
+from app.whatsapp.notificaciones import actualizar_consentimiento_whatsapp
 
 router = APIRouter()
 
@@ -158,6 +161,28 @@ def actualizar_piloto(
 ) -> UsuarioResponse:
     usuario = cambiar_modo_piloto(db, admin, usuario_id, datos.es_piloto)
     return construir_usuario_response(usuario)
+
+
+@router.patch(
+    "/usuarios/{usuario_id}/consentimiento-whatsapp",
+    response_model=ConsentimientoWhatsAppResponse,
+    summary="Registrar o revocar el consentimiento explícito de avisos por WhatsApp",
+    responses=RESPUESTAS_ADMIN,
+)
+def gestionar_consentimiento_whatsapp(
+    usuario_id: UUID,
+    datos: ConsentimientoWhatsAppUpdate,
+    admin: AdminActual,
+    db: SesionDB,
+) -> ConsentimientoWhatsAppResponse:
+    del admin
+    registro = actualizar_consentimiento_whatsapp(
+        db,
+        usuario_id,
+        aceptado=datos.aceptado,
+        origen=datos.origen,
+    )
+    return ConsentimientoWhatsAppResponse.model_validate(registro)
 
 
 __all__ = ["router"]

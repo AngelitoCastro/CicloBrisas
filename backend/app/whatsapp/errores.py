@@ -14,7 +14,7 @@ class FirmaInvalida(ErrorWhatsApp):
     def __init__(self) -> None:
         super().__init__(
             "WEBHOOK_FIRMA_INVALIDA",
-            "La firma del webhook de Twilio no es válida.",
+            "La firma del webhook no es válida.",
             status_code=403,
         )
 
@@ -24,6 +24,15 @@ class CuentaTwilioInvalida(ErrorWhatsApp):
         super().__init__(
             "WEBHOOK_CUENTA_INVALIDA",
             "La cuenta de Twilio del webhook no es válida.",
+            status_code=403,
+        )
+
+
+class NumeroMetaInvalido(ErrorWhatsApp):
+    def __init__(self) -> None:
+        super().__init__(
+            "WEBHOOK_NUMERO_INVALIDO",
+            "El identificador del número receptor de WhatsApp no es válido.",
             status_code=403,
         )
 
@@ -46,6 +55,14 @@ class ProveedorNoDisponible(ErrorWhatsApp):
         )
 
 
+class ErrorTransitorioIA(ProveedorNoDisponible):
+    """Fallo transitorio del proveedor de IA susceptible de reintento."""
+
+    def __init__(self, proveedor: str, detalle: str = "ERROR_TRANSITORIO") -> None:
+        super().__init__(proveedor)
+        self.codigo = f"IA_TRANSITORIO_{detalle}"[:50]
+
+
 class SalidaIAInvalida(ErrorWhatsApp):
     def __init__(self) -> None:
         super().__init__(
@@ -64,12 +81,30 @@ class MultimediaNoDisponible(ErrorWhatsApp):
         )
 
 
+class ErrorMetaDefinitivo(ErrorWhatsApp):
+    """Rechazo confirmado 4xx de Graph API: el envío no se aceptó y puede reintentarse."""
+
+    def __init__(self, codigo: str, mensaje: str = "Graph API rechazó el aviso.") -> None:
+        super().__init__(codigo[:80], mensaje, status_code=502)
+
+
+class ErrorMetaIncierto(ErrorWhatsApp):
+    """Resultado incierto (5xx/timeout/red): esperar conciliación antes de reenviar."""
+
+    def __init__(self, codigo: str, mensaje: str = "Resultado incierto en Graph API.") -> None:
+        super().__init__(codigo[:80], mensaje, status_code=502)
+
+
 __all__ = [
     "ConfiguracionIncompleta",
     "CuentaTwilioInvalida",
+    "ErrorMetaDefinitivo",
+    "ErrorMetaIncierto",
+    "ErrorTransitorioIA",
     "ErrorWhatsApp",
     "FirmaInvalida",
     "MultimediaNoDisponible",
+    "NumeroMetaInvalido",
     "ProveedorNoDisponible",
     "SalidaIAInvalida",
 ]
