@@ -17,8 +17,6 @@ Abrir la URL que muestre Vite (normalmente `http://localhost:5173`). Para compro
 
 Desde la raíz del repositorio, `docker compose up --build` levanta PostgreSQL, la API en `:8000` y este dev server en `:5173`. La API acepta ese origen por CORS y la URL base se configura con `VITE_API_URL` (por defecto `http://localhost:8000`). El prototipo aún persiste en `localStorage` y no consume la API.
 
-Desde la pantalla de acceso, **Ver recorrido por WhatsApp** abre una demostración con datos ficticios. Elige Huerta o Reciclaje. Como **Habitante**, solicita la recolección. Como **Coordinador**, apruébala y programa la visita. En **Recolector**, envía la respuesta simulada con el código y peso. Vuelve a **Habitante** para ver el cierre y consultar el saldo. La demo comparte la solicitud entre vistas y guarda su progreso por separado durante la sesión del navegador.
-
 ## Perfiles de demostración
 
 - Coordinador de Huerta: orgánicos, autorización, recolección/entrega directa, donaciones, equipo, mensajes, pesaje, horarios e historial.
@@ -35,7 +33,7 @@ En **Equipo**, los coordinadores consultan los miembros de su actividad. Adminis
 2. Revisa la descripción/foto, solicita más información si corresponde, corrige la categoría o autoriza. Se puede rechazar con motivo.
 3. Una vez autorizada, selecciona responsable, fecha permitida y franja configurada. Añade una nota. Programa y avisa por WhatsApp (simulado). Para entrega directa se asigna quien recibe.
 4. En **Programadas**, la ficha indica que se espera la confirmación del responsable. En la demo puedes simular su mensaje con `LISTO <código> <cantidad>`. Si usas el cierre manual de respaldo, registra la cantidad y el motivo. En Reciclaje, el peso total permite cerrar y calcular EcoPuntos. Completa el desglose en **Recolectadas** para calcular el valor en COP.
-5. Consulta los avisos en el seguimiento de cada solicitud. Para simular una solicitud de WhatsApp, usa el recorrido de demostración desde la pantalla de acceso.
+5. Consulta los avisos en el seguimiento de cada solicitud.
 6. En **Métricas**, cada coordinador gestiona sus días y franjas y consulta los EcoPuntos por kilo para hogares y unidades productivas. En Reciclaje también se muestran las tarifas vigentes en COP. Administración edita las reglas de puntos y las tarifas de reciclaje en **Reglas de EcoPuntos**. Cada registro final conserva la tarifa aplicada. Los horarios de ejemplo no representan acuerdos definitivos.
 
 En Reciclaje, abre **Registros de materiales** para registrar una recepción independiente. Selecciona un reciclador, registra el peso por material y añade pacas, proveedor o tiquete si corresponde. El historial conserva el peso y las tarifas aplicadas al guardar.

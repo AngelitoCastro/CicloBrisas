@@ -8,7 +8,7 @@ import RecordsPanel from '../components/RecordsPanel'
 import RecyclingBreakdown from '../components/RecyclingBreakdown'
 import { closeCollection } from '../services/collectionClosure'
 import { collectionSlotKey, getCollectionClock, getNextCollectionAvailability, isCollectionDayAvailable, isCollectionSlotAvailable } from '../services/collectionSchedule'
-type Props = { flow: Flow; data: Data; update: (r: Request, notifications?: { name: string; phone: string; text: string }[], reply?: { name: string; phone: string; text: string }, expectedStatus?: Status) => void; notify: (text: string) => void; onSaveRecord: (record: IntakeRecord) => void; linkedDemo?: boolean }
+type Props = { flow: Flow; data: Data; update: (r: Request, notifications?: { name: string; phone: string; text: string }[], reply?: { name: string; phone: string; text: string }, expectedStatus?: Status) => void; notify: (text: string) => void; onSaveRecord: (record: IntakeRecord) => void }
 const views = {
     pending: { label: 'Por programar', icon: Clock, tone: 'amber' },
     scheduled: { label: 'Programadas', icon: CalendarDays, tone: 'teal' },
@@ -27,11 +27,8 @@ function requestView(status: Request['status']): RequestView {
     }
 }
 
-export default function Collections({ flow, data, update, notify, onSaveRecord, linkedDemo = false }: Props) {
-    const [view, setView] = useState<View>(() => {
-        const request = linkedDemo ? data.requests.find(item => item.flow === flow) : undefined
-        return request ? requestView(request.status) : 'pending'
-    })
+export default function Collections({ flow, data, update, notify, onSaveRecord }: Props) {
+    const [view, setView] = useState<View>('pending')
     const [selection, setSelection] = useState('')
     const [creatingRequest, setCreatingRequest] = useState(false)
     const [reschedule, setReschedule] = useState(false)
@@ -93,18 +90,16 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
     return <div className="collections">
         <div className="flex flex-wrap justify-between items-end gap-3 mb-5">
             <div>
-                {linkedDemo ? <h2>Panel de recolecciones · {recycling ? 'Reciclaje' : 'Huerta'}</h2> : <h1>Panel de recolecciones</h1>}
-                <p className="muted mt-1">{linkedDemo && own.length === 0
-                    ? 'Envía una solicitud desde la vista Habitante para verla en Por programar.'
-                    : 'Elige una solicitud y organiza su recolección en tres pasos.'}</p>
+                <h1>Panel de recolecciones</h1>
+                <p className="muted mt-1">Elige una solicitud y organiza su recolección en tres pasos.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 <span className="line"><CalendarDays size={16} aria-hidden="true" />
                     {new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', timeZone: 'America/Bogota' }).format(new Date())}
                 </span>
-                {!linkedDemo && <button className="btn" onClick={() => setCreatingRequest(true)}>
+                <button className="btn" onClick={() => setCreatingRequest(true)}>
                     <Plus size={18} aria-hidden="true" /> Nueva solicitud
-                </button>}
+                </button>
             </div>
         </div>
         <div className="stat-grid collection-stages" role="group" aria-label="Etapas de recolección">
@@ -124,7 +119,7 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
                 <ClipboardList size={18} aria-hidden="true" /> Volver a recolecciones
             </button>
         </div>}
-        {!linkedDemo && recycling && <div hidden={view !== 'records'}><RecordsPanel data={data} onSave={onSaveRecord} notify={notify} /></div>}
+        {recycling && <div hidden={view !== 'records'}><RecordsPanel data={data} onSave={onSaveRecord} notify={notify} /></div>}
         {!recycling && view === 'records' && <section className="panel" aria-labelledby="organic-records-title">
             <header className="panel-head">
                 <Scale aria-hidden="true" size={26} /><h2 id="organic-records-title">Registro de materiales recibidos</h2>
@@ -154,9 +149,9 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
                     ))}
                 </div>
                 <div className="collection-tools">
-                    {!linkedDemo && <button className="btn pill" onClick={() => selectView('records')}>
+                    <button className="btn pill" onClick={() => selectView('records')}>
                         <Scale size={16} aria-hidden="true" /> Registros de materiales
-                    </button>}
+                    </button>
                     <button className="btn pill" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
                         <Search size={16} aria-hidden="true" /> Buscar y filtrar
                     </button>
@@ -201,7 +196,7 @@ export default function Collections({ flow, data, update, notify, onSaveRecord, 
                     </header>
                     {selected ? <div className="panel-body">
                         <Detail key={selected.id + selected.status + reschedule} r={selected}
-                            data={data} update={onUpdate} notify={notify} reschedule={reschedule} linkedDemo={linkedDemo}
+                            data={data} update={onUpdate} notify={notify} reschedule={reschedule}
                             onRescheduled={() => setReschedule(false)} />
                     </div> : <Empty>Selecciona una solicitud para ver los detalles.</Empty>}
                 </section>
@@ -278,7 +273,7 @@ function formatCollectionDate(date: string) {
     return Number.isNaN(instant.getTime()) ? date : collectionDayFormat.format(instant)
 }
 
-function Detail({ r, data, update, notify, reschedule = false, onRescheduled, linkedDemo = false }: { r: Request; data: Data; update: Props['update']; notify: Props['notify']; reschedule?: boolean; onRescheduled?: () => void; linkedDemo?: boolean }) {
+function Detail({ r, data, update, notify, reschedule = false, onRescheduled }: { r: Request; data: Data; update: Props['update']; notify: Props['notify']; reschedule?: boolean; onRescheduled?: () => void }) {
     const members = data.members.filter(member => member.flow === r.flow && member.active)
     const assigned = data.members.find(member => member.id === r.assignee && member.flow === r.flow)
     const schedule = data.schedules[r.flow]
@@ -439,7 +434,7 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
                         ))
                         notify('Solicitud de evidencia simulada.')
                     }}><MessageCircle size={17} aria-hidden="true" /> Solicitar foto o más información</button>
-                    {!linkedDemo && r.kind === 'residuo' && <button className="btn" aria-expanded={rerouting}
+                    {r.kind === 'residuo' && <button className="btn" aria-expanded={rerouting}
                         onClick={() => setRerouting(!rerouting)}>Cambiar categoría</button>}
                     {rerouting && <div className="note space-y-2">
                         <p>La solicitud {r.id} pasará a Por programar del panel de {destination}.</p>
@@ -519,9 +514,8 @@ function Detail({ r, data, update, notify, reschedule = false, onRescheduled, li
                 <p><strong>{assigned?.name ?? 'Sin responsable registrado'}</strong> · {r.date} · {r.time}</p>
                 <p>El responsable informa {donation ? 'las unidades recibidas' : 'el peso aceptado'} con el código de la solicitud.</p>
             </div>
-            {linkedDemo && <p className="muted">Envía la confirmación desde la vista Recolector.</p>}
             <div className="flex flex-wrap gap-2">
-                {!linkedDemo && !r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
+                {!r.backendId && <button className="btn" aria-expanded={closureMode === 'whatsapp-demo'}
                     onClick={() => chooseClosure('whatsapp-demo')}><MessageCircle size={18} aria-hidden="true" /> Simular respuesta</button>}
                 <button className="btn" aria-expanded={closureMode === 'manual'}
                     onClick={() => chooseClosure('manual')}><Scale size={18} aria-hidden="true" /> Cierre manual de respaldo</button>
